@@ -1,9 +1,5 @@
 package com.bank.gateway.server;
 
-import java.net.URI;
-import java.util.List;
-import java.util.Random;
-
 import com.bank.gateway.handler.Forwarder;
 import com.bank.gateway.loadbalancer.LoadBalancer;
 import com.bank.gateway.router.RouterService;
@@ -30,7 +26,6 @@ public class NettyHttpServer implements CommandLineRunner {
     @Autowired
     private Forwarder forwarder;
 
-    //启动网关服务器
     private void startServer() throws InterruptedException {
         EventLoopGroup bossGroup = new NioEventLoopGroup(1);
         EventLoopGroup workerGroup = new NioEventLoopGroup();
@@ -61,14 +56,16 @@ public class NettyHttpServer implements CommandLineRunner {
     @Override
     public void run(String... args) throws Exception {
         routerService.init();  //初始化路由表
-        startServer();
+        startServer();         //启动网关服务器
     }
 }
 
 @Slf4j
 class SimpleHttpHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
 
+    //路由服务
     private final RouterService routerService;
+    //转发服务
     private final Forwarder forwarder;
 
     public SimpleHttpHandler(RouterService routerService,Forwarder forwarder){
