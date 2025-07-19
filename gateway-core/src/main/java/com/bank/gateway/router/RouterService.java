@@ -28,7 +28,7 @@ public class RouterService {
         routes.add(new GatewayRoute(1L, "user-service", "/api/users/**", "user-service", 1));
         routes.add(new GatewayRoute(2L, "order-service", "/api/orders/**", "order-service", 1));
         routes.add(new GatewayRoute(3L, "payment-service", "/api/payments/**", "payment-service", 1));
-        routes.add(new GatewayRoute(4L, "payment-service", "/api/payments/**", "payment-service", 1));
+        routes.add(new GatewayRoute(4L, "provider-a", "/api/payments/**", "provider-a", 1));
         for (GatewayRoute route : routes) {
             String serviceId = route.getServiceId();
             List<ServiceProviderInstance> instances = new ArrayList<>();
@@ -37,7 +37,11 @@ public class RouterService {
                 ServiceProviderInstance instance = new ServiceProviderInstance();
                 instance.setHost("127.0.0.1");
                 instance.setPort(8080 + i + 1);
-                instance.setMetadata(Map.of("weight", String.valueOf(i+1), "zone", "zone" + i, "version", "v1"));
+                Map<String, String> metadata = new HashMap<>();
+                metadata.put("weight", String.valueOf(i + 1));
+                metadata.put("zone", "zone" + i);
+                metadata.put("version", "v1");
+                instance.setMetadata(metadata);
                 instances.add(instance);
             }
             serviceProviderInstanceMap.put(serviceId, instances);
