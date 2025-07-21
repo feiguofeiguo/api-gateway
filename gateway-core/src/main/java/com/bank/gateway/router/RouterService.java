@@ -3,7 +3,10 @@ package com.bank.gateway.router;
 import com.bank.gateway.router.entity.GatewayRoute;
 import com.bank.gateway.router.entity.ServiceProviderInstance;
 import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cloud.client.ServiceInstance;
+import org.springframework.cloud.client.discovery.DiscoveryClient;
 import org.springframework.stereotype.Service;
 import java.net.URI;
 import java.util.ArrayList;
@@ -13,35 +16,34 @@ import java.util.Map;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class RouterService {
 
+    private final DiscoveryClient discoveryClient;
     @Getter
     private static final Map<String, List<ServiceProviderInstance>> serviceProviderInstanceMap = new HashMap<>();
 
     public void init() {
         log.debug("===Call RouterService init===");
-        //TODO 获取数据库中的路由信息
-        //List<GatewayRoute> routes = gatewayRouteMapper.selectList(null);
 
         //构造示例数据
         List<GatewayRoute> routes = new ArrayList<>();
         routes.add(new GatewayRoute(1L, "user-service", "/api/users/**", "user-service", 1));
         routes.add(new GatewayRoute(2L, "order-service", "/api/orders/**", "order-service", 1));
         routes.add(new GatewayRoute(3L, "payment-service", "/api/payments/**", "payment-service", 1));
-        routes.add(new GatewayRoute(4L, "provider-a", "/api/payments/**", "provider-a", 1));
+        routes.add(new GatewayRoute(4L, "provider-a", "/api/provider-a/**", "provider-a", 1));
+        routes.add(new GatewayRoute(5L, "provider-b", "/api/provider-b/**", "provider-b", 1));
         for (GatewayRoute route : routes) {
             String serviceId = route.getServiceId();
             List<ServiceProviderInstance> instances = new ArrayList<>();
+            List<ServiceInstance> tmpInstances = discoveryClient.getInstances(serviceId);
             // 这里用假数据，实际可从注册中心或配置获取
-            for (int i = 0; i < 1; i++) {
+            for (int i = 0; i < tmpInstances.size(); i++) {
                 ServiceProviderInstance instance = new ServiceProviderInstance();
-                instance.setHost("127.0.0.1");
-                instance.setPort(8080 + i + 1);
-                Map<String, String> metadata = new HashMap<>();
-                metadata.put("weight", String.valueOf(i + 1));
-                metadata.put("zone", "zone" + i);
-                metadata.put("version", "v1");
-                instance.setMetadata(metadata);
+                ServiceInstance tmpInstance = tmpInstances.get(i);
+                instance.setHost(tmpInstance.getHost());
+                instance.setPort(tmpInstance.getPort());
+                instance.setMetadata(tmpInstance.getMetadata());
                 instances.add(instance);
             }
             serviceProviderInstanceMap.put(serviceId, instances);
