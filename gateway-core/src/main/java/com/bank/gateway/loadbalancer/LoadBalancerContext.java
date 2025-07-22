@@ -23,7 +23,7 @@ public class LoadBalancerContext {
         strategyMap.put(LoadBalancerEnum.RoundRobin, new RoundRobin());
         strategyMap.put(LoadBalancerEnum.WeightedRandom, new WeightedRandom());
         strategyMap.put(LoadBalancerEnum.WeightedRoundRobin, new WeightedRoundRobin());
-        this.setLoadBalancer(loadBalancerConfig.getLoadBalancerStrategy());
+        this.setLoadBalancer(loadBalancerConfig.getStrategy());
     }
 
     public void setLoadBalancer(LoadBalancerEnum loadBalancerEnum) {
