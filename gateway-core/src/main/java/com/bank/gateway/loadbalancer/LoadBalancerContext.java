@@ -3,6 +3,7 @@ package com.bank.gateway.loadbalancer;
 import com.bank.gateway.loadbalancer.loadbalancerImpl.*;
 import com.bank.gateway.router.RouterService;
 import com.bank.gateway.router.entity.ServiceProviderInstance;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
@@ -13,6 +14,7 @@ import java.util.Map;
  * 策略上下文，用于调用具体的负载均衡算法
  */
 @Component
+@Slf4j
 public class LoadBalancerContext {
     private LoadBalancer loadBalancer;
 
@@ -30,6 +32,11 @@ public class LoadBalancerContext {
     }
 
     public void setLoadBalancer(LoadBalancerEnum loadBalancerEnum) {
+        log.debug("loadBalancerEnum:{}", loadBalancerEnum);
+        if(loadBalancerEnum==null){
+            log.warn("loadBalancerEnum is null, set IPHash as default.");
+            loadBalancerEnum=LoadBalancerEnum.IPHash;
+        }
         this.loadBalancer = strategyMap.get(loadBalancerEnum);
     }
 

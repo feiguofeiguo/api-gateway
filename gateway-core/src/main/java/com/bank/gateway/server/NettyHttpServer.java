@@ -1,5 +1,6 @@
 package com.bank.gateway.server;
 
+import com.bank.gateway.filter.auth.AuthFilter;
 import com.bank.gateway.handler.Forwarder;
 import com.bank.gateway.loadbalancer.LoadBalancer;
 import com.bank.gateway.loadbalancer.LoadBalancerContext;
@@ -10,6 +11,7 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.codec.http.*;
+import io.netty.util.CharsetUtil;
 import lombok.extern.java.Log;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,6 +48,7 @@ public class NettyHttpServer implements CommandLineRunner {
                             ChannelPipeline pipeline = ch.pipeline();
                             pipeline.addLast(new HttpServerCodec());
                             pipeline.addLast(new HttpObjectAggregator(65536));
+                            pipeline.addLast(new AuthFilter());
                             pipeline.addLast(new SimpleHttpHandler(routerService, forwarder, loadBalancerContext));
                         }
                     });
@@ -84,8 +87,12 @@ class SimpleHttpHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest request) {
+        //判断是否签发JWT
+//        String jwt = ctx.channel().attr().get(AuthFilter.NEW);
+//        if(jwt != null){
+//            sendJwtResponse(ctx,jwt);
+//        }
         request.retain();
-
         try {
             // 1 通过RouterService获取服务名
             String uri=request.uri();
@@ -129,4 +136,23 @@ class SimpleHttpHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
 
         ctx.writeAndFlush(response).addListener(ChannelFutureListener.CLOSE);
     }
+
+    //返回JWT
+    /**
+     * 生成JWT并下发给客户端
+     * @param ctx ChannelHandlerContext
+     * @param newJwt 生成的JWT字符串
+     */
+    private void sendJwtResponse(ChannelHandlerContext ctx, String newJwt) {
+        String responseBody = "{\"jwt\":\"" + newJwt + "\"}";
+        FullHttpResponse response = new DefaultFullHttpResponse(
+                HttpVersion.HTTP_1_1,
+                HttpResponseStatus.OK,
+                ctx.alloc().buffer().writeBytes(responseBody.getBytes(CharsetUtil.UTF_8))
+        );
+        response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json;charset=UTF-8");
+        response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
+        ctx.writeAndFlush(response).addListener(ChannelFutureListener.CLOSE);
+    }
+    
 }
