@@ -1,0 +1,10 @@
+spring:
+  application:
+    name: ApiGateway
+  cloud:
+    nacos:
+      server-addr: localhost:8848
+      config:
+        file-extension: yaml
+        shared-configs:
+          - data-id: loadbalancer.yaml

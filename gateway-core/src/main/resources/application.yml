@@ -1,15 +1,9 @@
 spring:
-  application:
-    name: ApiGateway
   datasource:
     password: 0103
     username: root
     url: jdbc:mysql://localhost:3306/apig?useSSL=false&serverTimezone=UTC
     driver-class-name: com.mysql.cj.jdbc.Driver
-  cloud:
-    nacos:
-      discovery:
-        server-addr: localhost:8848
 mybatis-plus:
   configuration:
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
