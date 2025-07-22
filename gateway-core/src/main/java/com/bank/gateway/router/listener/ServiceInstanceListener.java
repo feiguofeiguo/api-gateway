@@ -1,10 +1,6 @@
 package com.bank.gateway.router.listener;
 
 import com.alibaba.cloud.nacos.NacosServiceManager;
-import com.alibaba.nacos.api.exception.NacosException;
-import com.alibaba.nacos.api.naming.NamingService;
-import com.alibaba.nacos.api.naming.listener.EventListener;
-import com.alibaba.nacos.api.naming.pojo.Instance;
 import com.alibaba.nacos.client.naming.event.InstancesChangeEvent;
 import com.alibaba.nacos.common.notify.Event;
 import com.alibaba.nacos.common.notify.NotifyCenter;
@@ -16,8 +12,10 @@ import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
-import java.util.List;
 
+/*
+ * 监听服务实例的变化
+ */
 @Component
 @Slf4j
 public class ServiceInstanceListener extends Subscriber<InstancesChangeEvent> {

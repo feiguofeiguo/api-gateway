@@ -4,7 +4,6 @@ import com.alibaba.cloud.nacos.NacosConfigManager;
 import com.alibaba.nacos.api.config.ConfigChangeEvent;
 import com.alibaba.nacos.api.config.ConfigChangeItem;
 import com.alibaba.nacos.api.config.ConfigService;
-import com.alibaba.nacos.api.config.annotation.NacosConfigListener;
 import com.alibaba.nacos.api.exception.NacosException;
 import com.alibaba.nacos.client.config.listener.impl.AbstractConfigChangeListener;
 import lombok.extern.slf4j.Slf4j;
@@ -13,6 +12,9 @@ import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
 
+/*
+ * 监听nacos上配置的负载均衡策略的变更
+ */
 @Component
 @Slf4j
 public class LoadBalancerConfigListener {

@@ -8,6 +8,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/*
+ * 轮询算法做负载均衡
+ */
 public class RoundRobin implements LoadBalancer {
     private final Map<String, AtomicInteger> indexes = new HashMap<>();
 

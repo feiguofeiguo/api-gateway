@@ -36,8 +36,8 @@ public class RouterService {
         for (GatewayRoute route : routes) {
             String serviceId = route.getServiceId();
             List<ServiceProviderInstance> instances = new ArrayList<>();
+            //从注册中心上拉取实例
             List<ServiceInstance> tmpInstances = discoveryClient.getInstances(serviceId);
-            // 这里用假数据，实际可从注册中心或配置获取
             for (int i = 0; i < tmpInstances.size(); i++) {
                 ServiceProviderInstance instance = new ServiceProviderInstance();
                 ServiceInstance tmpInstance = tmpInstances.get(i);

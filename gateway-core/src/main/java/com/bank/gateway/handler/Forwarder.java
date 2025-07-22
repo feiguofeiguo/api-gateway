@@ -19,6 +19,7 @@ import java.net.URISyntaxException;
 public class Forwarder {
     private static final EventLoopGroup group = new NioEventLoopGroup();
 
+    // 保存服务实例上下文，方便记录连接数
     private static ThreadLocal<String> serviceIdContext = new ThreadLocal<>();
     private static ThreadLocal<ServiceProviderInstance> instanceContext = new ThreadLocal<>();
 
@@ -63,6 +64,7 @@ public class Forwarder {
                         targetChannel.close();
                     } else {
                       log.info("forward request success...");
+                      // 在成功转发请求后给选中的服务实例增加连接数
                       serviceIdContext.set(request.uri().split("/")[1]);
                       instanceContext.set(instance);
                       LeastConnection.increaseConnection(serviceIdContext.get(), instanceContext.get().getPort());
@@ -133,6 +135,7 @@ public class Forwarder {
             // 将响应写回原始客户端
             log.debug("response:" + response);
             originalCtx.writeAndFlush(response.retain()).addListener(ChannelFutureListener.CLOSE);
+            // 在请求响应后给选中的服务实例减少连接数
             LeastConnection.releaseConnection(serviceIdContext.get(), instanceContext.get().getPort());
             ctx.close();
         }
@@ -141,6 +144,7 @@ public class Forwarder {
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
             log.info("Error in forward response handler: " + cause.getMessage());
             new Forwarder().sendErrorResponse(originalCtx, "Internal server error");
+            // 在请求响应后给选中的服务实例减少连接数
             LeastConnection.releaseConnection(serviceIdContext.get(), instanceContext.get().getPort());
             ctx.close();
         }

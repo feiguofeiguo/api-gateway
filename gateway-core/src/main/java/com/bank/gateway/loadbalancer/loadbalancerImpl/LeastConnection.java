@@ -9,6 +9,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+/*
+ * 根据服务实例的连接数做负载均衡
+ */
 public class LeastConnection implements LoadBalancer {
     @Getter
     private static final Map<String, ConcurrentHashMap<Integer, Integer>> serviceConnectionCounts = new HashMap<>();
@@ -42,6 +45,7 @@ public class LeastConnection implements LoadBalancer {
         return minConnectionService;
     }
 
+    // 在成功转发请求后给选中的服务实例增加连接数
     public static void increaseConnection(String serviceId, int port) {
         if(!serviceConnectionCounts.containsKey(serviceId)) {
             synchronized (serviceId) {
@@ -61,6 +65,7 @@ public class LeastConnection implements LoadBalancer {
         instanceConnectionCounts.put(port, instanceConnectionCounts.get(port) + 1);
     }
 
+    // 在请求响应后给选中的服务实例减少连接数
     public static void releaseConnection(String serviceId, int port) {
         Map<Integer, Integer> instanceConnectionCounts = serviceConnectionCounts.get(serviceId);
         instanceConnectionCounts.put(port, instanceConnectionCounts.get(port) - 1);
