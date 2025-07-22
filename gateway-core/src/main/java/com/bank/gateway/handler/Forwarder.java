@@ -1,5 +1,6 @@
 package com.bank.gateway.handler;
 
+import com.bank.gateway.loadbalancer.loadbalancerImpl.LeastConnection;
 import com.bank.gateway.router.entity.ServiceProviderInstance;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
@@ -17,6 +18,9 @@ import java.net.URISyntaxException;
 @Slf4j
 public class Forwarder {
     private static final EventLoopGroup group = new NioEventLoopGroup();
+
+    private static ThreadLocal<String> serviceIdContext = new ThreadLocal<>();
+    private static ThreadLocal<ServiceProviderInstance> instanceContext = new ThreadLocal<>();
 
     public void forward(FullHttpRequest request, ServiceProviderInstance instance, ChannelHandlerContext ctx) {
         log.debug("===Call forward===");
@@ -59,6 +63,9 @@ public class Forwarder {
                         targetChannel.close();
                     } else {
                       log.info("forward request success...");
+                      serviceIdContext.set(request.uri().split("/")[1]);
+                      instanceContext.set(instance);
+                      LeastConnection.increaseConnection(serviceIdContext.get(), instanceContext.get().getPort());
                     }
                 });
             } else {
@@ -126,6 +133,7 @@ public class Forwarder {
             // 将响应写回原始客户端
             log.debug("response:" + response);
             originalCtx.writeAndFlush(response.retain()).addListener(ChannelFutureListener.CLOSE);
+            LeastConnection.releaseConnection(serviceIdContext.get(), instanceContext.get().getPort());
             ctx.close();
         }
 
@@ -133,6 +141,7 @@ public class Forwarder {
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
             log.info("Error in forward response handler: " + cause.getMessage());
             new Forwarder().sendErrorResponse(originalCtx, "Internal server error");
+            LeastConnection.releaseConnection(serviceIdContext.get(), instanceContext.get().getPort());
             ctx.close();
         }
     }
