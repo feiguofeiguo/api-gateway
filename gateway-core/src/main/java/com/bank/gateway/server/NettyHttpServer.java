@@ -2,6 +2,7 @@ package com.bank.gateway.server;
 
 import com.bank.gateway.handler.Forwarder;
 import com.bank.gateway.loadbalancer.LoadBalancer;
+import com.bank.gateway.loadbalancer.LoadBalancerContext;
 import com.bank.gateway.router.RouterService;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
@@ -16,6 +17,8 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 import com.bank.gateway.router.entity.ServiceProviderInstance;
 
+import java.net.InetSocketAddress;
+
 @Component
 @Slf4j
 public class NettyHttpServer implements CommandLineRunner {
@@ -25,6 +28,9 @@ public class NettyHttpServer implements CommandLineRunner {
 
     @Autowired
     private Forwarder forwarder;
+
+    @Autowired
+    private LoadBalancerContext loadBalancerContext;
 
     private void startServer() throws InterruptedException {
         EventLoopGroup bossGroup = new NioEventLoopGroup(1);
@@ -40,7 +46,7 @@ public class NettyHttpServer implements CommandLineRunner {
                             ChannelPipeline pipeline = ch.pipeline();
                             pipeline.addLast(new HttpServerCodec());
                             pipeline.addLast(new HttpObjectAggregator(65536));
-                            pipeline.addLast(new SimpleHttpHandler(routerService,forwarder));
+                            pipeline.addLast(new SimpleHttpHandler(routerService, forwarder, loadBalancerContext));
                         }
                     });
 
@@ -67,10 +73,13 @@ class SimpleHttpHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
     private final RouterService routerService;
     //转发服务
     private final Forwarder forwarder;
+    //负载均衡策略上下文
+    private final LoadBalancerContext loadBalancerContext;
 
-    public SimpleHttpHandler(RouterService routerService,Forwarder forwarder){
+    public SimpleHttpHandler(RouterService routerService, Forwarder forwarder, LoadBalancerContext loadBalancerContext){
         this.routerService = routerService;
         this.forwarder = forwarder;
+        this.loadBalancerContext = loadBalancerContext;
     }
 
     @Override
@@ -87,8 +96,11 @@ class SimpleHttpHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
             }
             log.info("Service ID: " + serviceId);
 
+            //获取源ip地址，可用于负载均衡
+            InetSocketAddress insocket = (InetSocketAddress) ctx.channel().remoteAddress();
+            String clientIP = insocket.getAddress().getHostAddress();
             //2. 通过LoadBalancer选择服务实例
-            ServiceProviderInstance instance = LoadBalancer.choose(serviceId);
+            ServiceProviderInstance instance = loadBalancerContext.choose(serviceId, clientIP);
             if (instance == null){                // 如果没有可用的服务实例，返回503
                 sendErrorResponse(ctx, "No available service instances", HttpResponseStatus.SERVICE_UNAVAILABLE);
                 return;
