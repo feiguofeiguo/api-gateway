@@ -9,6 +9,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/*
+ * 策略上下文，用于调用具体的负载均衡算法
+ */
 @Component
 public class LoadBalancerContext {
     private LoadBalancer loadBalancer;

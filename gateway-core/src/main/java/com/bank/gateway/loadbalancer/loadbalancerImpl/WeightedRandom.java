@@ -6,6 +6,9 @@ import com.bank.gateway.router.entity.ServiceProviderInstance;
 import java.util.List;
 import java.util.Random;
 
+/*
+ * 带权重的随机算法做负载均衡
+ */
 public class WeightedRandom implements LoadBalancer {
     private final Random random = new Random();
 
