@@ -88,6 +88,18 @@
             <version>2.3.1</version>
         </dependency>
 
+        <!-- Redis客户端 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <!-- fastjson 用于动态配置解析 -->
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>fastjson</artifactId>
+            <version>1.2.83</version>
+        </dependency>
+
 
     </dependencies>
 

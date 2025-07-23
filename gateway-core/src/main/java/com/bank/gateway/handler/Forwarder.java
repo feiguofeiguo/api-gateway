@@ -79,7 +79,7 @@ public class Forwarder {
 
     private FullHttpRequest createForwardRequest(FullHttpRequest originalRequest, ServiceProviderInstance instance) {
         // 创建新的请求对象
-        //TODO-重构 这里和routerService中有部分重合，后续看看能否将几个uri，pathAndQuery,serviceId统一处理一下
+        // TODO-重构 这里和routerService中有部分重合，后续看看能否将几个uri，pathAndQuery,serviceId统一处理一下
         log.debug("uri:" + originalRequest.uri());
         String uri = null;
         try {

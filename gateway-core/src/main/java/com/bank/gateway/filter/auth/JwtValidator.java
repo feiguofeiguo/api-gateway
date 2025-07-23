@@ -14,7 +14,7 @@ public class JwtValidator {
     //新签发jwt时
     private static final AttributeKey<String> NEW_JWT_KEY = AttributeKey.valueOf("jwt");
 
-    public String extractJwt(FullHttpRequest request) throws AuthException {
+    public static String extractJwt(FullHttpRequest request) throws AuthException {
         String authHeader = request.headers().get(JWT_HEADER);
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             log.debug("Missing JWT");
@@ -29,7 +29,7 @@ public class JwtValidator {
         try {
             Jwts.parser().setSigningKey(JWT_SECRET.getBytes()).parseClaimsJws(jwt);
         } catch (Exception e) {
-            //TODO-功能 如果过期，这里也会抛出异常，那么APIG应该主动生成一个JWT，然后发过去，客户端看到响应体中有JWT字段，也就知道要重传了
+            // TODO-功能 如果过期，这里也会抛出异常，那么APIG应该主动生成一个JWT，然后发过去，客户端看到响应体中有JWT字段，也就知道要重传了
             throw new AuthException("Invalid JWT");
         }
     }
@@ -54,9 +54,9 @@ public class JwtValidator {
      * 签发JWT，包含user_id、name、permission（Set类型）、exp（unix时间戳）
      */
     public String issueJwt() {
-        //TODO-数据 jwt应该验证什么内容，是否应该和API-key联动
+        // TODO-数据 jwt应该验证什么内容，是否应该和API-key联动
         // 示例数据，实际应根据业务逻辑获取,例如从用户表中查询APIKEY，获取响应信息，或者这里直接生成一些也可以。
-        String userId = "10001";
+        String userId = "10001";  //反正都是从服务器下发，可以考虑直接自增吗
         String name = "测试用户";
         java.util.Set<String> permission = new java.util.HashSet<>();
         permission.add("order-service");
@@ -69,7 +69,17 @@ public class JwtValidator {
                 .claim("name", name)
                 .claim("permission", permission)
                 .claim("exp", exp)
-                .signWith(io.jsonwebtoken.SignatureAlgorithm.HS256, "JWT_SECRET_1557".getBytes())
+                .signWith(io.jsonwebtoken.SignatureAlgorithm.HS256, JWT_SECRET.getBytes())
                 .compact();
     }
+
+    public static String parseUserIdFromJwt(String jwt_token) {
+        Claims claims = Jwts.parser()
+                .setSigningKey(JWT_SECRET.getBytes())  // 使用相同的密钥
+                .parseClaimsJws(jwt_token)
+                .getBody();
+
+        return claims.get("user_id", String.class);
+    }
+
 }

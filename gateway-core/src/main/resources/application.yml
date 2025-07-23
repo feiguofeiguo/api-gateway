@@ -4,12 +4,19 @@ spring:
     username: root
     url: jdbc:mysql://localhost:3306/apig?useSSL=false&serverTimezone=UTC
     driver-class-name: com.mysql.cj.jdbc.Driver
+  redis:
+    host: 127.0.0.1
+    port: 6379
+    password:   # 如果有密码，填上
+    database: 0
+
 mybatis-plus:
   configuration:
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
     map-underscore-to-camel-case: true
   mapper-locations: classpath*:mapper/**/*.xml
   type-aliases-package: com.example.entity
+
 
 #日志配置
 logging:

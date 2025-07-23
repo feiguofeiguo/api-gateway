@@ -1,6 +1,7 @@
 package com.bank.gateway.server;
 
 import com.bank.gateway.filter.auth.AuthFilter;
+import com.bank.gateway.filter.ratelimit.RateLimitFilter;
 import com.bank.gateway.handler.Forwarder;
 import com.bank.gateway.loadbalancer.LoadBalancer;
 import com.bank.gateway.loadbalancer.LoadBalancerContext;
@@ -16,6 +17,7 @@ import lombok.extern.java.Log;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 import com.bank.gateway.router.entity.ServiceProviderInstance;
 
@@ -34,6 +36,9 @@ public class NettyHttpServer implements CommandLineRunner {
     @Autowired
     private LoadBalancerContext loadBalancerContext;
 
+    @Autowired
+    private ApplicationContext applicationContext;
+
     private void startServer() throws InterruptedException {
         EventLoopGroup bossGroup = new NioEventLoopGroup(1);
         EventLoopGroup workerGroup = new NioEventLoopGroup();
@@ -49,6 +54,7 @@ public class NettyHttpServer implements CommandLineRunner {
                             pipeline.addLast(new HttpServerCodec());
                             pipeline.addLast(new HttpObjectAggregator(65536));
                             pipeline.addLast(new AuthFilter());
+                            pipeline.addLast(applicationContext.getBean(RateLimitFilter.class));
                             pipeline.addLast(new SimpleHttpHandler(routerService, forwarder, loadBalancerContext));
                         }
                     });
