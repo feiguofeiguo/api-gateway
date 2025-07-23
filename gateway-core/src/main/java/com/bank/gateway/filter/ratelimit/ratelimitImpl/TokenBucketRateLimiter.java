@@ -1,6 +1,7 @@
-package com.bank.gateway.filter.ratelimit;
+package com.bank.gateway.filter.ratelimit.ratelimitImpl;
 
-import com.alibaba.fastjson.JSON;
+import com.bank.gateway.filter.ratelimit.RateLimitConfigService;
+import com.bank.gateway.filter.ratelimit.RateLimiter;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -22,8 +23,8 @@ public class TokenBucketRateLimiter implements RateLimiter {
         long now = System.currentTimeMillis();
         // 令牌桶状态结构
         Map<String, String> bucket = redisTemplate.<String, String>opsForHash().entries(redisKey);
-        int capacity = config.getCapacity();
-        int rate = config.getRate();
+        int capacity = config.getTkbCapacity();
+        int rate = config.getTkbRate();
         int tokens = capacity;
         long lastRefillTime = now;
 

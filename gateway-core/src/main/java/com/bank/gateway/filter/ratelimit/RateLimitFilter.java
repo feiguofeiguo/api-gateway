@@ -1,6 +1,8 @@
 package com.bank.gateway.filter.ratelimit;
 
 import com.bank.gateway.filter.auth.JwtValidator;
+import com.bank.gateway.filter.ratelimit.ratelimitImpl.SlidingWindowRateLimiter;
+import com.bank.gateway.filter.ratelimit.ratelimitImpl.TokenBucketRateLimiter;
 import io.netty.channel.*;
 import io.netty.handler.codec.http.*;
 import io.netty.util.CharsetUtil;
@@ -43,10 +45,10 @@ public class RateLimitFilter extends ChannelInboundHandlerAdapter {
         RateLimitConfigService.LimitConfig config = configService.getConfig(serviceId);
 
         //进行限流
-        boolean allowed;   //是否允许通过
-        if ("token-bucket".equals(config.getType())) {    //config控制走哪个限流器
-            allowed = tokenBucketRateLimiter.allowRequest(key, config);    //限流器执行具体限流工作
-        } else if ("sliding-window".equals(config.getType())) {
+        boolean allowed;  //是否允许通过
+        if (config.getType() == RateLimitEnum.TOKEN_BUCKET) {   //config控制走哪个限流器
+            allowed = tokenBucketRateLimiter.allowRequest(key, config);   //限流器执行具体限流工作
+        } else if (config.getType() == RateLimitEnum.SLIDING_WINDOW) {
             allowed = slidingWindowRateLimiter.allowRequest(key, config);
         } else {
             allowed = true;
@@ -71,7 +73,6 @@ public class RateLimitFilter extends ChannelInboundHandlerAdapter {
     }
 
     // TODO-重构 又来了家人们
-    // 这里可根据你的路由规则提取 serviceId
     private String getServiceId(String uri){
         String pathAndQuery = uri;
         try {

@@ -9,6 +9,8 @@ spring:
     port: 6379
     password:   # 如果有密码，填上
     database: 0
+  config:
+    import: classpath:ratelimit.yml
 
 mybatis-plus:
   configuration:

@@ -1,5 +1,7 @@
-package com.bank.gateway.filter.ratelimit;
+package com.bank.gateway.filter.ratelimit.ratelimitImpl;
 
+import com.bank.gateway.filter.ratelimit.RateLimitConfigService;
+import com.bank.gateway.filter.ratelimit.RateLimiter;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -18,7 +20,7 @@ public class SlidingWindowRateLimiter implements RateLimiter {
     public boolean allowRequest(String key, RateLimitConfigService.LimitConfig config) {
         String redisKey = "sliding_window:" + key;
         long now = System.currentTimeMillis();
-        long windowMillis = config.getWindow() * 1000L;
+        long windowMillis = config.getSlwWindow() * 1000L;
         long minTime = now - windowMillis;
 
         // 移除窗口外的请求
@@ -26,10 +28,10 @@ public class SlidingWindowRateLimiter implements RateLimiter {
 
         // 统计窗口内请求数
         Long count = redisTemplate.opsForZSet().zCard(redisKey);
-        if (count != null && count < config.getThreshold()) {
+        if (count != null && count < config.getSlwThreshold()) {
             // 允许请求，记录本次
             redisTemplate.opsForZSet().add(redisKey, String.valueOf(now), now);
-            redisTemplate.expire(redisKey, config.getWindow() * 2, TimeUnit.SECONDS);
+            redisTemplate.expire(redisKey, config.getSlwWindow() * 2L, TimeUnit.SECONDS);
             return true;
         } else {
             return false;

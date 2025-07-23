@@ -1,0 +1,13 @@
+  rate-limit:
+    order-service:
+      type: TOKEN_BUCKET
+      TkbRate: 10
+      TknCapacity: 20
+    user-service:
+      type: SLIDING_WINDOW
+      SlwWindow: 60
+      SlwThreshold: 100
+    provider-a:
+      type: TOKEN_BUCKET
+      TkbRate: 10
+      TknCapacity: 20
