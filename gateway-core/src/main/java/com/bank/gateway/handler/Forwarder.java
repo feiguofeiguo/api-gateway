@@ -1,6 +1,9 @@
 package com.bank.gateway.handler;
 
 import com.bank.gateway.loadbalancer.loadbalancerImpl.LeastConnection;
+import com.bank.gateway.plugin.GatewayPlugin;
+import com.bank.gateway.plugin.PluginChain;
+import com.bank.gateway.plugin.PluginContext;
 import com.bank.gateway.router.entity.ServiceProviderInstance;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
@@ -16,12 +19,27 @@ import java.net.URISyntaxException;
 
 @Component
 @Slf4j
-public class Forwarder {
+public class Forwarder implements GatewayPlugin {
     private static final EventLoopGroup group = new NioEventLoopGroup();
-
-    // 保存服务实例上下文，方便记录连接数
     private static ThreadLocal<String> serviceIdContext = new ThreadLocal<>();
     private static ThreadLocal<ServiceProviderInstance> instanceContext = new ThreadLocal<>();
+
+    @Override
+    public String name() { return "ForwarderPlugin"; }
+    @Override
+    public int order() { return 50; }
+    @Override
+    public boolean enabled() { return true; }
+
+    @Override
+    public void execute(PluginContext context, PluginChain chain) {
+        FullHttpRequest request = context.getRequest();
+        ServiceProviderInstance instance = context.getInstance();
+        ChannelHandlerContext ctx = context.getNettyCtx();
+        forward(request, instance, ctx);
+        log.debug("插件版-转发回传，完成！");
+        // 转发后不再调用 chain.doNext(context)，因为这是最后一个插件
+    }
 
     public void forward(FullHttpRequest request, ServiceProviderInstance instance, ChannelHandlerContext ctx) {
         log.debug("===Call forward===");
@@ -45,7 +63,6 @@ public class Forwarder {
                     }
                 });
 
-        // 连接到目标服务
         ChannelFuture connectFuture = bootstrap.connect(instance.getHost(), instance.getPort());
         log.debug("connectFuture:" + connectFuture);
         connectFuture.addListener((ChannelFutureListener) future -> {
@@ -79,7 +96,6 @@ public class Forwarder {
 
     private FullHttpRequest createForwardRequest(FullHttpRequest originalRequest, ServiceProviderInstance instance) {
         // 创建新的请求对象
-        // TODO-重构 这里和routerService中有部分重合，后续看看能否将几个uri，pathAndQuery,serviceId统一处理一下
         log.debug("uri:" + originalRequest.uri());
         String uri = null;
         try {
@@ -113,7 +129,6 @@ public class Forwarder {
                 HttpResponseStatus.SERVICE_UNAVAILABLE,
                 ctx.alloc().buffer().writeBytes(errorMessage.getBytes(CharsetUtil.UTF_8))
         );
-
         response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/plain;charset=UTF-8");
         response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
 

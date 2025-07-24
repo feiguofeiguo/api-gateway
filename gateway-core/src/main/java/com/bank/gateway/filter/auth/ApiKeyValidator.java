@@ -2,8 +2,10 @@ package com.bank.gateway.filter.auth;
 
 import io.netty.handler.codec.http.FullHttpRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
 @Slf4j
+@Component
 public class ApiKeyValidator {
     private static final String API_KEY_HEADER = "X-API-KEY";
     private static final String VALID_API_KEY = "API_KEY_"; // TODO-数据 从配置读取

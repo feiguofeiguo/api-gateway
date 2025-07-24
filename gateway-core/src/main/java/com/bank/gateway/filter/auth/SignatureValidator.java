@@ -2,12 +2,14 @@ package com.bank.gateway.filter.auth;
 
 import io.netty.handler.codec.http.FullHttpRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.util.Base64;
 
 @Slf4j
+@Component
 public class SignatureValidator {
     private static final String SIGN_HEADER = "X-SIGNATURE";
     private static final String SECRET = "SECRET_1530"; // TODO-数据 从配置读取

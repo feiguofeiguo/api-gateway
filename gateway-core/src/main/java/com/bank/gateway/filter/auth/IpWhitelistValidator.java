@@ -2,6 +2,7 @@ package com.bank.gateway.filter.auth;
 
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -9,6 +10,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 @Slf4j
+@Component
 public class IpWhitelistValidator {
     private static final Set<String> WHITELIST = Collections.unmodifiableSet(
             // TODO-数据 后期从数据库中读取

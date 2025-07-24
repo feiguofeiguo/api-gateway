@@ -1,7 +1,13 @@
 package com.bank.gateway.router;
 
+import com.bank.gateway.plugin.GatewayPlugin;
+import com.bank.gateway.plugin.PluginChain;
+import com.bank.gateway.plugin.PluginContext;
 import com.bank.gateway.router.entity.GatewayRoute;
 import com.bank.gateway.router.entity.ServiceProviderInstance;
+import io.netty.channel.ChannelFutureListener;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.handler.codec.http.*;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,15 +23,44 @@ import java.util.Map;
 @Service
 @Slf4j
 @RequiredArgsConstructor
-public class RouterService {
-
+public class RouterService implements GatewayPlugin {
     private final DiscoveryClient discoveryClient;
+
     @Getter
     private static final Map<String, List<ServiceProviderInstance>> serviceProviderInstanceMap = new HashMap<>();
 
+    @Override
+    public String name() { return "RouterPlugin"; }
+    @Override
+    public int order() { return 30; }
+    @Override
+    public boolean enabled() { return true; }
+
+    @Override
+    public void execute(PluginContext context, PluginChain chain) {
+        String uri = context.getRequest().uri();
+        String serviceId = context.getServiceId();
+        log.debug("serviceId: " + serviceId);
+        //serviceId=getMicroServiceId(serviceId);
+        if (serviceId == null) {
+            // 404 响应
+            ChannelHandlerContext ctx = context.getNettyCtx();
+            FullHttpResponse response = new DefaultFullHttpResponse(
+                    HttpVersion.HTTP_1_1,
+                    HttpResponseStatus.NOT_FOUND,
+                    ctx.alloc().buffer().writeBytes("ServiceID not found".getBytes())
+            );
+            response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/plain;charset=UTF-8");
+            response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
+            ctx.writeAndFlush(response).addListener(ChannelFutureListener.CLOSE);
+            return;
+        }
+        log.debug("插件版-路由-获取微服务名，成功！");
+        chain.doNext(context);
+    }
+
     public void init() {
         log.debug("===Call RouterService init===");
-
         //构造示例数据
         List<GatewayRoute> routes = new ArrayList<>();
         routes.add(new GatewayRoute(1L, "user-service", "/api/users/**", "user-service", 1));
@@ -51,40 +86,16 @@ public class RouterService {
     }
 
     /**
-     * 根据请求路径获取微服务名
-     * @param uri 请求路径
+     * 应对模糊路径的逻辑，但是在约定：url的第一段是微服务名时就不需要
+     * @param serviceId 请求路径
      * @return 服务名，如果没找到返回null
      */
-    public String getServiceId(String uri) {
-        log.debug("===Call getServiceId===");
-        String pathAndQuery = uri;
-        // 兼容处理：有些客户端（如SpringBoot内嵌Netty）发起的请求uri会包含完整的url（如：http://127.0.0.1:9261/order-service/test1），
-        // 而postman等工具只会带相对路径（如：/order-service/test1）。
-        // 这里做兼容处理，始终只取path和query部分，去除host和端口
-        try {
-            URI uriObj = new URI(uri);
-            String path = uriObj.getRawPath();
-            String query = uriObj.getRawQuery();
-            if (query != null && !query.isEmpty()) {
-                pathAndQuery = path + "?" + query;
-            } else {
-                pathAndQuery = path;
-            }
-            log.debug("兼容处理后的uri: " + pathAndQuery);
-        } catch (Exception e) {
-            log.warn("解析uri异常，使用原始uri: " + pathAndQuery, e);
-        }
-        log.debug("pathAndQuery: "+pathAndQuery);
-        String queryId=pathAndQuery.substring(1).split("/")[0];
-        log.debug("queryId: "+queryId);
-
-        //转为从serviceProviderInstanceMap中获取服务名
+    public String getMicroServiceId(String serviceId) {
         for (Map.Entry<String, List<ServiceProviderInstance>> entry : serviceProviderInstanceMap.entrySet()) {
-            if (pathMatches(queryId, entry.getKey())) {
+            if (pathMatches(serviceId, entry.getKey())) {
                 return entry.getKey();
             }
         }
-
         return null;
     }
 

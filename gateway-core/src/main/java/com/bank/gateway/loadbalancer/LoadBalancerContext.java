@@ -1,9 +1,20 @@
 package com.bank.gateway.loadbalancer;
 
 import com.bank.gateway.loadbalancer.loadbalancerImpl.*;
+import com.bank.gateway.plugin.GatewayPlugin;
+import com.bank.gateway.plugin.PluginChain;
+import com.bank.gateway.plugin.PluginContext;
 import com.bank.gateway.router.RouterService;
 import com.bank.gateway.router.entity.ServiceProviderInstance;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.handler.codec.http.FullHttpRequest;
+import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.codec.http.HttpVersion;
+import io.netty.util.CharsetUtil;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
@@ -15,11 +26,43 @@ import java.util.Map;
  */
 @Component
 @Slf4j
-public class LoadBalancerContext {
+public class LoadBalancerContext implements GatewayPlugin {
     private LoadBalancer loadBalancer;
-
     private static Map<LoadBalancerEnum, LoadBalancer> strategyMap;
 
+    @Override
+    public String name() { return "LoadBalancerPlugin"; }
+    @Override
+    public int order() { return 40; }
+    @Override
+    public boolean enabled() { return true; }
+
+    @Override
+    public void execute(PluginContext context, PluginChain chain) {
+        String serviceId = context.getServiceId();
+        log.debug("serviceId:{}", serviceId);
+        ChannelHandlerContext ctx = context.getNettyCtx();
+        FullHttpRequest request = context.getRequest();
+        String clientIP = ((java.net.InetSocketAddress) ctx.channel().remoteAddress()).getAddress().getHostAddress();
+        log.debug("clientIP:{}", clientIP);
+        ServiceProviderInstance instance = choose(serviceId, clientIP);
+        if (instance == null) {
+            FullHttpResponse response = new io.netty.handler.codec.http.DefaultFullHttpResponse(
+                    HttpVersion.HTTP_1_1,
+                    HttpResponseStatus.SERVICE_UNAVAILABLE,
+                    ctx.alloc().buffer().writeBytes("No available service instances".getBytes(CharsetUtil.UTF_8))
+            );
+            response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/plain;charset=UTF-8");
+            response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
+            ctx.writeAndFlush(response).addListener(io.netty.channel.ChannelFutureListener.CLOSE);
+            return;
+        }
+        context.setInstance(instance);
+        log.debug("插件版-负载均衡，选择实例: {}", instance);
+        chain.doNext(context);
+    }
+
+    @Autowired
     public LoadBalancerContext(LoadBalancerConfig loadBalancerConfig) {
         strategyMap = new HashMap<>();
         strategyMap.put(LoadBalancerEnum.IPHash, new IPHash());

@@ -5,8 +5,10 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.netty.util.AttributeKey;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
 @Slf4j
+@Component
 public class JwtValidator {
     private static final String JWT_HEADER = "Authorization";
     private static final String JWT_SECRET = "JWT_SECRET_1557"; // TODO-数据 从配置读取
@@ -47,8 +49,6 @@ public class JwtValidator {
             return false;
         }
     }
-
-
 
     /**
      * 签发JWT，包含user_id、name、permission（Set类型）、exp（unix时间戳）
