@@ -43,6 +43,7 @@ public class RateLimitFilter extends ChannelInboundHandlerAdapter {
         }
         String key = serviceId + ":" + userId;
         RateLimitConfigService.LimitConfig config = configService.getConfig(serviceId);
+        log.debug("service_id: {} with {}", serviceId, config);
 
         //进行限流
         boolean allowed;  //是否允许通过

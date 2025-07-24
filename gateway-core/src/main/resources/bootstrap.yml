@@ -8,3 +8,4 @@ spring:
         file-extension: yaml
         shared-configs:
           - data-id: loadbalancer.yaml
+          - data-id: ratelimit.yaml
