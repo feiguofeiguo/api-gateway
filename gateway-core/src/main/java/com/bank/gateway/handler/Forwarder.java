@@ -5,14 +5,11 @@ import com.bank.gateway.plugin.GatewayPlugin;
 import com.bank.gateway.plugin.PluginChain;
 import com.bank.gateway.plugin.PluginContext;
 import com.bank.gateway.router.entity.ServiceProviderInstance;
-import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
-import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.channel.socket.SocketChannel;
-import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.*;
 import io.netty.util.CharsetUtil;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -20,7 +17,12 @@ import java.net.URISyntaxException;
 @Component
 @Slf4j
 public class Forwarder implements GatewayPlugin {
-    private static final EventLoopGroup group = new NioEventLoopGroup();
+    @Autowired
+    private ConnectionPool connectionPool;
+    
+    @Autowired
+    private RequestResponseMapper requestResponseMapper;
+    
     private static ThreadLocal<String> serviceIdContext = new ThreadLocal<>();
     private static ThreadLocal<ServiceProviderInstance> instanceContext = new ThreadLocal<>();
 
@@ -49,49 +51,39 @@ public class Forwarder implements GatewayPlugin {
         }
         log.debug("instance:" + instance);
 
-        Bootstrap bootstrap = new Bootstrap();
-        bootstrap.group(group)
-                .channel(NioSocketChannel.class)
-                .option(ChannelOption.SO_KEEPALIVE, true)
-                .handler(new ChannelInitializer<SocketChannel>() {
-                    @Override
-                    protected void initChannel(SocketChannel ch) {
-                        ChannelPipeline pipeline = ch.pipeline();
-                        pipeline.addLast(new HttpClientCodec());
-                        pipeline.addLast(new HttpObjectAggregator(65536));
-                        pipeline.addLast(new ForwardResponseHandler(ctx));
-                    }
-                });
+        // 生成请求ID并注册映射
+        String requestId = requestResponseMapper.generateRequestId();
+        requestResponseMapper.registerRequest(requestId, ctx);
+        log.debug("生成请求ID: {} -> {}", requestId, ctx.channel().remoteAddress());
 
-        ChannelFuture connectFuture = bootstrap.connect(instance.getHost(), instance.getPort());
-        log.debug("connectFuture:" + connectFuture);
-        connectFuture.addListener((ChannelFutureListener) future -> {
-            if (future.isSuccess()) {
-                Channel targetChannel = future.channel();
+        try {
+            // 从连接池获取连接
+            Channel targetChannel = connectionPool.getConnection(instance.getHost(), instance.getPort(), requestId);
+            
+            // 构造转发请求
+            FullHttpRequest forwardRequest = createForwardRequest(request, instance);
+            log.debug("forwardRequest:" + forwardRequest);
 
-                // 构造转发请求
-                FullHttpRequest forwardRequest = createForwardRequest(request, instance);
-                log.debug("forwardRequest:" + forwardRequest);
-
-                // 发送请求到目标服务
-                targetChannel.writeAndFlush(forwardRequest).addListener(writeFuture -> {
-                    if (!writeFuture.isSuccess()) {
-                        log.info("Failed to forward request to " + instance.getHost() + ":" + instance.getPort());
-                        sendErrorResponse(ctx, "Failed to forward request");
-                        targetChannel.close();
-                    } else {
-                      log.info("forward request success...");
-                      // 在成功转发请求后给选中的服务实例增加连接数
-                      serviceIdContext.set(request.uri().split("/")[1]);
-                      instanceContext.set(instance);
-                      LeastConnection.increaseConnection(serviceIdContext.get(), instanceContext.get().getPort());
-                    }
-                });
-            } else {
-                log.info("Failed to connect to " + instance.getHost() + ":" + instance.getPort());
-                sendErrorResponse(ctx, "Service unavailable");
-            }
-        });
+            // 发送请求到目标服务
+            targetChannel.writeAndFlush(forwardRequest).addListener(writeFuture -> {
+                if (!writeFuture.isSuccess()) {
+                    log.info("Failed to forward request to " + instance.getHost() + ":" + instance.getPort());
+                    sendErrorResponse(ctx, "Failed to forward request");
+                    connectionPool.returnConnection(targetChannel, instance.getHost(), instance.getPort());
+                } else {
+                    log.info("forward request success...");
+                    // 在成功转发请求后给选中的服务实例增加连接数
+                    serviceIdContext.set(request.uri().split("/")[1]);
+                    instanceContext.set(instance);
+                    LeastConnection.increaseConnection(serviceIdContext.get(), instanceContext.get().getPort());
+                   
+                    
+                }
+            });
+        } catch (Exception e) {
+            log.error("Failed to get connection from pool: " + e.getMessage());
+            sendErrorResponse(ctx, "Service unavailable");
+        }
     }
 
     private FullHttpRequest createForwardRequest(FullHttpRequest originalRequest, ServiceProviderInstance instance) {
@@ -140,9 +132,15 @@ public class Forwarder implements GatewayPlugin {
      */
     private static class ForwardResponseHandler extends SimpleChannelInboundHandler<FullHttpResponse> {
         private final ChannelHandlerContext originalCtx;
+        private final String host;
+        private final int port;
+        private final ConnectionPool connectionPool;
 
-        public ForwardResponseHandler(ChannelHandlerContext originalCtx) {
+        public ForwardResponseHandler(ChannelHandlerContext originalCtx, String host, int port, ConnectionPool connectionPool) {
             this.originalCtx = originalCtx;
+            this.host = host;
+            this.port = port;
+            this.connectionPool = connectionPool;
         }
 
         @Override
@@ -152,7 +150,8 @@ public class Forwarder implements GatewayPlugin {
             originalCtx.writeAndFlush(response.retain()).addListener(ChannelFutureListener.CLOSE);
             // 在请求响应后给选中的服务实例减少连接数
             LeastConnection.releaseConnection(serviceIdContext.get(), instanceContext.get().getPort());
-            ctx.close();
+            // 归还连接到池中
+            connectionPool.returnConnection(ctx.channel(), host, port);
         }
 
         @Override
@@ -161,7 +160,8 @@ public class Forwarder implements GatewayPlugin {
             new Forwarder().sendErrorResponse(originalCtx, "Internal server error");
             // 在请求响应后给选中的服务实例减少连接数
             LeastConnection.releaseConnection(serviceIdContext.get(), instanceContext.get().getPort());
-            ctx.close();
+            // 归还连接到池中
+            connectionPool.returnConnection(ctx.channel(), host, port);
         }
     }
 }

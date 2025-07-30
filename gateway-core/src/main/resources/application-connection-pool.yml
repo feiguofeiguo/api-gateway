@@ -1,0 +1,17 @@
+# 连接池配置
+gateway:
+  connection-pool:
+    # 每个目标的最大连接数
+    max-pool-size: 100
+    # 每个目标的最小连接数
+    min-pool-size: 10
+    # 连接超时时间(毫秒)
+    connection-timeout: 50000
+    # 连接空闲超时时间(毫秒)
+    idle-timeout: 30000
+    # 连接保活时间(毫秒)
+    keep-alive-time: 60000
+    # 连接池预热开关
+    pre-warm-enabled: true
+    # 连接池统计开关
+    stats-enabled: true 

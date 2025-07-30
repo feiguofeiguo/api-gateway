@@ -62,7 +62,7 @@ public class JwtValidator {
         permission.add("order-service");
         permission.add("user-service");
         permission.add("provider-a");
-        long exp = System.currentTimeMillis() / 1000 + 60*10; // 10分钟后过期
+        long exp = System.currentTimeMillis() / 1000 + 60*60*24*7; // 10分钟后过期
 
         return io.jsonwebtoken.Jwts.builder()
                 .claim("user_id", userId)
