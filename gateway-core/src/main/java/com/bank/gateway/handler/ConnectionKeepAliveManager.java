@@ -10,10 +10,15 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.atomic.AtomicBoolean;
+import io.netty.channel.ChannelHandlerContext;
 
 /**
  * 连接保活管理器
  * 实现连接的保活和直接复用机制
+ * 修改：KeepAliveConnection只与host:port绑定，不再与requestId绑定
  */
 @Component
 @Slf4j
@@ -33,18 +38,34 @@ public class ConnectionKeepAliveManager {
      * 获取保活连接
      * @param host 目标主机
      * @param port 目标端口
-     * @param requestId 请求ID
      * @return 可用的连接，如果没有则返回null
      */
-    public Channel getKeepAliveConnection(String host, int port, String requestId) {
+    public Channel getKeepAliveConnection(String host, int port) {
         String key = host + ":" + port;
         KeepAliveConnection keepAliveConn = keepAliveConnections.get(key);
         
         if (keepAliveConn != null && keepAliveConn.isValid()) {
             // 刷新保活时间
             keepAliveConn.refresh();
-            log.info("复用保活连接: {}:{} -> {}", host, port, keepAliveConn.getChannel().remoteAddress());
+            log.debug("复用保活连接: {}:{}", host, port);
             return keepAliveConn.getChannel();
+        }
+        
+        return null;
+    }
+    
+    /**
+     * 获取保活连接实例
+     * @param host 目标主机
+     * @param port 目标端口
+     * @return 保活连接实例，如果没有则返回null
+     */
+    public KeepAliveConnection getKeepAliveConnectionInstance(String host, int port) {
+        String key = host + ":" + port;
+        KeepAliveConnection keepAliveConn = keepAliveConnections.get(key);
+        
+        if (keepAliveConn != null && keepAliveConn.isValid()) {
+            return keepAliveConn;
         }
         
         return null;
@@ -60,8 +81,14 @@ public class ConnectionKeepAliveManager {
     public void registerKeepAliveConnection(String host, int port, Channel channel, ConnectionPool connectionPool) {
         String key = host + ":" + port;
         
-        // 取消之前的保活任务（如果存在）
+        // 检查连接是否已经在保活状态
         KeepAliveConnection existing = keepAliveConnections.get(key);
+        if (existing != null && existing.getChannel() == channel) {
+            log.debug("连接已在保活状态，跳过重复注册: {}:{}", host, port);
+            return;
+        }
+        
+        // 取消之前的保活任务（如果存在）
         if (existing != null) {
             existing.cancelTimeoutTask();
         }
@@ -70,22 +97,21 @@ public class ConnectionKeepAliveManager {
         KeepAliveConnection keepAliveConn = new KeepAliveConnection(channel, connectionPool, host, port);
         keepAliveConnections.put(key, keepAliveConn);
         
-        // 添加连接关闭监听器，确保保活连接被意外关闭时能正确清理
-        channel.closeFuture().addListener(future -> {
-            log.debug("保活连接被关闭: {}:{}", host, port);
-            KeepAliveConnection conn = keepAliveConnections.get(key);
-            if (conn != null && conn.getChannel() == channel) {
-                keepAliveConnections.remove(key);
-                conn.cancelTimeoutTask();
-                log.info("清理已关闭的保活连接: {}:{}", host, port);
-            }
-        });
-        
         // 启动保活超时任务
         keepAliveConn.startTimeoutTask(scheduler, KEEP_ALIVE_TIME, () -> {
-            log.info("保活连接超时，归还到连接池: {}:{}", host, port);
+            log.info("定时任务：保活连接超时，归还到主连接池: {}:{}", host, port);
             keepAliveConnections.remove(key);
-            connectionPool.returnConnection(channel, host, port);
+            
+            // 直接归还到主连接池，避免循环调用
+            if (channel.isActive()) {
+                String poolKey = host + ":" + port;
+                ConcurrentLinkedQueue<Channel> pool = connectionPool.getConnectionPools().computeIfAbsent(poolKey, k -> new ConcurrentLinkedQueue<>());
+                pool.offer(channel);
+                log.info("定时任务：连接已归还到主连接池: {}:{}", host, port);
+            } else {
+                log.warn("定时任务：连接已失效，直接关闭: {}:{}", host, port);
+                channel.close();
+            }
         });
         
         log.info("注册保活连接: {}:{} -> {}", host, port, channel.remoteAddress());
@@ -147,9 +173,10 @@ public class ConnectionKeepAliveManager {
     
     /**
      * 保活连接包装类
+     * 修改：移除requestId绑定，只与host:port绑定
      */
     @Data
-    private static class KeepAliveConnection {
+    public static class KeepAliveConnection {
         private final Channel channel;
         private final ConnectionPool connectionPool;
         private final String host;
@@ -157,20 +184,16 @@ public class ConnectionKeepAliveManager {
         private volatile long lastActiveTime;
         private volatile ScheduledFuture<?> timeoutTask;
         
+        // 请求队列：用于管理多个请求复用同一个连接
+        private final ConcurrentLinkedDeque<PendingRequest> pendingRequests = new ConcurrentLinkedDeque<>();
+        private final AtomicBoolean isProcessing = new AtomicBoolean(false);
+        
         public KeepAliveConnection(Channel channel, ConnectionPool connectionPool, String host, int port) {
             this.channel = channel;
             this.connectionPool = connectionPool;
             this.host = host;
             this.port = port;
             this.lastActiveTime = System.currentTimeMillis();
-        }
-        
-        public Channel getChannel() {
-            return channel;
-        }
-        
-        public long getLastActiveTime() {
-            return lastActiveTime;
         }
         
         public boolean isValid() {
@@ -189,6 +212,59 @@ public class ConnectionKeepAliveManager {
             if (timeoutTask != null && !timeoutTask.isDone()) {
                 timeoutTask.cancel(false);
             }
+        }
+        
+        /**
+         * 添加待处理请求
+         */
+        public void addPendingRequest(String requestId, ChannelHandlerContext clientCtx) {
+            PendingRequest request = new PendingRequest(requestId, clientCtx);
+            pendingRequests.offer(request);
+            log.debug("添加待处理请求: {} -> {}", requestId, host + ":" + port);
+        }
+        
+        /**
+         * 获取下一个待处理请求
+         */
+        public PendingRequest getNextPendingRequest() {
+            return pendingRequests.poll();
+        }
+        
+        /**
+         * 检查是否有待处理请求
+         */
+        public boolean hasPendingRequests() {
+            return !pendingRequests.isEmpty();
+        }
+        
+        /**
+         * 设置处理状态
+         */
+        public boolean setProcessing(boolean processing) {
+            return isProcessing.compareAndSet(!processing, processing);
+        }
+        
+        /**
+         * 检查是否正在处理请求
+         */
+        public boolean isProcessing() {
+            return isProcessing.get();
+        }
+    }
+    
+    /**
+     * 待处理请求包装类
+     */
+    @Data
+    public static class PendingRequest {
+        private final String requestId;
+        private final ChannelHandlerContext clientCtx;
+        private final long timestamp;
+        
+        public PendingRequest(String requestId, ChannelHandlerContext clientCtx) {
+            this.requestId = requestId;
+            this.clientCtx = clientCtx;
+            this.timestamp = System.currentTimeMillis();
         }
     }
 } 

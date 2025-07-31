@@ -23,6 +23,9 @@ public class Forwarder implements GatewayPlugin {
     @Autowired
     private RequestResponseMapper requestResponseMapper;
     
+    @Autowired
+    private ConnectionKeepAliveManager keepAliveManager;
+    
     private static ThreadLocal<String> serviceIdContext = new ThreadLocal<>();
     private static ThreadLocal<ServiceProviderInstance> instanceContext = new ThreadLocal<>();
 
@@ -55,38 +58,50 @@ public class Forwarder implements GatewayPlugin {
         String requestId = requestResponseMapper.generateRequestId();
         requestResponseMapper.registerRequest(requestId, ctx);
         log.debug("生成请求ID: {} -> {}", requestId, ctx.channel().remoteAddress());
+        log.debug(requestId+" 用于处理 request name: "+request.headers().get("REQUEST-NAME"));
 
         try {
             // 从连接池获取连接
-            Channel targetChannel = connectionPool.getConnection(instance.getHost(), instance.getPort(), requestId);
+            Channel targetChannel = connectionPool.getConnection(instance.getHost(), instance.getPort());
+            
+            // 检查是否是保活连接
+            ConnectionKeepAliveManager.KeepAliveConnection keepAliveConn = 
+                    keepAliveManager.getKeepAliveConnectionInstance(instance.getHost(), instance.getPort());
+            
+            if (keepAliveConn != null && targetChannel == keepAliveConn.getChannel()) {
+                // 使用保活连接，将请求添加到队列中
+                log.debug("使用保活连接处理请求: {} -> {}:{}", requestId, instance.getHost(), instance.getPort());
+                DynamicResponseHandler.bindKeepAliveContext(targetChannel, keepAliveConn, requestId, ctx);
+            } else {
+                // 使用普通连接池中的连接
+                log.debug("使用普通连接处理请求: {} -> {}:{}", requestId, instance.getHost(), instance.getPort());
+                DynamicResponseHandler.bindRequestContext(targetChannel, requestId, instance.getHost(), instance.getPort(), connectionPool);
+            }
             
             // 构造转发请求
-            FullHttpRequest forwardRequest = createForwardRequest(request, instance);
-            log.debug("forwardRequest:" + forwardRequest);
+            FullHttpRequest forwardRequest = createForwardRequest(request, instance, requestId);
 
             // 发送请求到目标服务
             targetChannel.writeAndFlush(forwardRequest).addListener(writeFuture -> {
                 if (!writeFuture.isSuccess()) {
-                    log.info("Failed to forward request to " + instance.getHost() + ":" + instance.getPort());
+                    log.info(requestId+" Failed to forward request to " + instance.getHost() + ":" + instance.getPort());
                     sendErrorResponse(ctx, "Failed to forward request");
                     connectionPool.returnConnection(targetChannel, instance.getHost(), instance.getPort());
                 } else {
-                    log.info("forward request success...");
+                    log.info(requestId+" forward request success...");
                     // 在成功转发请求后给选中的服务实例增加连接数
                     serviceIdContext.set(request.uri().split("/")[1]);
                     instanceContext.set(instance);
                     LeastConnection.increaseConnection(serviceIdContext.get(), instanceContext.get().getPort());
-                   
-                    
                 }
             });
         } catch (Exception e) {
-            log.error("Failed to get connection from pool: " + e.getMessage());
+            log.error(requestId+" Failed to get connection from pool: " + e.getMessage());
             sendErrorResponse(ctx, "Service unavailable");
         }
     }
 
-    private FullHttpRequest createForwardRequest(FullHttpRequest originalRequest, ServiceProviderInstance instance) {
+    private FullHttpRequest createForwardRequest(FullHttpRequest originalRequest, ServiceProviderInstance instance, String requestId) {
         // 创建新的请求对象
         log.debug("uri:" + originalRequest.uri());
         String uri = null;
@@ -110,7 +125,9 @@ public class Forwarder implements GatewayPlugin {
         forwardRequest.headers().setAll(originalRequest.headers());
         // 设置必要的请求头
         forwardRequest.headers().set(HttpHeaderNames.HOST, instance.getHost() + ":" + instance.getPort());
-        forwardRequest.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.CLOSE);
+        forwardRequest.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.CLOSE);  //如果keepalive,客户端就会一直卡住
+
+        forwardRequest.headers().set("X-REQUEST-ID", requestId);
 
         return forwardRequest;
     }
@@ -125,43 +142,5 @@ public class Forwarder implements GatewayPlugin {
         response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
 
         ctx.writeAndFlush(response).addListener(ChannelFutureListener.CLOSE);
-    }
-
-    /**
-     * 处理从目标服务返回的响应
-     */
-    private static class ForwardResponseHandler extends SimpleChannelInboundHandler<FullHttpResponse> {
-        private final ChannelHandlerContext originalCtx;
-        private final String host;
-        private final int port;
-        private final ConnectionPool connectionPool;
-
-        public ForwardResponseHandler(ChannelHandlerContext originalCtx, String host, int port, ConnectionPool connectionPool) {
-            this.originalCtx = originalCtx;
-            this.host = host;
-            this.port = port;
-            this.connectionPool = connectionPool;
-        }
-
-        @Override
-        protected void channelRead0(ChannelHandlerContext ctx, FullHttpResponse response) {
-            // 将响应写回原始客户端
-            log.debug("response:" + response);
-            originalCtx.writeAndFlush(response.retain()).addListener(ChannelFutureListener.CLOSE);
-            // 在请求响应后给选中的服务实例减少连接数
-            LeastConnection.releaseConnection(serviceIdContext.get(), instanceContext.get().getPort());
-            // 归还连接到池中
-            connectionPool.returnConnection(ctx.channel(), host, port);
-        }
-
-        @Override
-        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-            log.info("Error in forward response handler: " + cause.getMessage());
-            new Forwarder().sendErrorResponse(originalCtx, "Internal server error");
-            // 在请求响应后给选中的服务实例减少连接数
-            LeastConnection.releaseConnection(serviceIdContext.get(), instanceContext.get().getPort());
-            // 归还连接到池中
-            connectionPool.returnConnection(ctx.channel(), host, port);
-        }
     }
 }

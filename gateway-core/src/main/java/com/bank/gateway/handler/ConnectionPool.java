@@ -75,16 +75,13 @@ public class ConnectionPool {
      * 获取连接
      * @param host 目标主机
      * @param port 目标端口
-     * @param requestId 请求ID，用于绑定到连接
      * @return 可用的Channel
      */
-    public Channel getConnection(String host, int port, String requestId) {
+    public Channel getConnection(String host, int port) {
         // 1. 首先尝试从保活连接中获取
-        Channel channel = keepAliveManager.getKeepAliveConnection(host, port, requestId);
+        Channel channel = keepAliveManager.getKeepAliveConnection(host, port);
         if (channel != null && channel.isActive()) {
             log.info("复用保活连接: {}:{}", host, port);
-            // 绑定请求上下文
-            DynamicResponseHandler.bindRequestContext(channel, requestId, host, port, this);
             return channel;
         }
         
@@ -94,14 +91,12 @@ public class ConnectionPool {
         channel = pool.poll();
         if (channel != null && channel.isActive()) {
             log.info("从连接池获取到连接: {}:{}", host, port);
-            // 绑定请求上下文
-            DynamicResponseHandler.bindRequestContext(channel, requestId, host, port, this);
             return channel;
         }
         
         // 3. 创建新连接
         log.warn("连接池中没有可用连接，创建新连接: {}:{}", host, port);
-        return createNewConnection(host, port, requestId);
+        return createNewConnection(host, port);
     }
     
 
@@ -109,7 +104,7 @@ public class ConnectionPool {
     /**
      * 创建新连接
      */
-    private Channel createNewConnection(String host, int port, String requestId) {
+    private Channel createNewConnection(String host, int port) {
         try {
             // 克隆Bootstrap模板并设置处理器
             Bootstrap bootstrap = BOOTSTRAP_TEMPLATE.clone();
@@ -128,18 +123,18 @@ public class ConnectionPool {
             Channel channel = connectFuture.sync().channel();
             
             // 绑定请求ID到新创建的连接
-            DynamicResponseHandler.bindRequestContext(channel, requestId, host, port, this);
+            DynamicResponseHandler.bindRequestContext(channel, null, host, port, this);
             
             // 添加连接关闭监听器，用于连接池管理
-            channel.closeFuture().addListener((ChannelFutureListener) future -> {
-                log.debug("连接关闭: {}:{}", host, port);
-                // 连接关闭时从池中移除
-                String key = host + ":" + port;
-                ConcurrentLinkedQueue<Channel> pool = connectionPools.get(key);
-                if (pool != null) {
-                    pool.remove(channel);
-                }
-            });
+//            channel.closeFuture().addListener((ChannelFutureListener) future -> {
+//                log.debug("连接关闭: {}:{}", host, port);
+//                // 连接关闭时从池中移除
+//                String key = host + ":" + port;
+//                ConcurrentLinkedQueue<Channel> pool = connectionPools.get(key);
+//                if (pool != null) {
+//                    pool.remove(channel);
+//                }
+//            });
             
             return channel;
         } catch (Exception e) {
@@ -153,6 +148,8 @@ public class ConnectionPool {
      * @param channel 要归还的连接
      * @param host 目标主机
      * @param port 目标端口
+     * 注意，由连接池中创建的channel，完成首次任务也会进入这里，
+     *      由保活池中复用的channel，完成任务后也会进入这里
      */
     public void returnConnection(Channel channel, String host, int port) {
         if (channel == null || !channel.isActive()) {
@@ -163,9 +160,10 @@ public class ConnectionPool {
             return;
         }
         
+        log.debug("===归还连接: {}:{} -> 保活状态", host, port);
         // 将连接注册为保活连接，而不是归还到池中
         keepAliveManager.registerKeepAliveConnection(host, port, channel, this);
-        log.info("连接进入保活状态: {}:{}", host, port);
+        log.info("连接进入保活状态: {}:{}===", host, port);
     }
     
 
@@ -197,7 +195,7 @@ public class ConnectionPool {
         // 预创建最小连接数
         for (int i = 0; i < minPoolSize; i++) {
             try {
-                Channel channel = createNewConnection(host, port, null);
+                Channel channel = createNewConnection(host, port);
                 pool.offer(channel);
             } catch (Exception e) {
                 log.warn("预创建连接失败: {}:{}, 错误: {}", host, port, e.getMessage());
@@ -226,7 +224,7 @@ public class ConnectionPool {
      * 获取连接池统计信息
      */
     public void printPoolStats() {
-        log.info("=== 连接池统计信息 ===");
+        log.info("\n=== 连接池统计信息 ===");
         int totalPools = connectionPools.size();
         final int[] totalConnections = {0};
         
@@ -237,7 +235,7 @@ public class ConnectionPool {
         });
         
         log.info("总连接池数: {}, 总连接数: {}", totalPools, totalConnections[0]);
-        log.info("=== 统计信息结束 ===");
+        log.info("=== 统计信息结束 ===\n");
     }
     
     /**
@@ -258,4 +256,10 @@ public class ConnectionPool {
         return total[0];
     }
     
+    /**
+     * 获取连接池映射（用于保活管理器直接访问）
+     */
+    public ConcurrentHashMap<String, ConcurrentLinkedQueue<Channel>> getConnectionPools() {
+        return connectionPools;
+    }
 } 
