@@ -14,29 +14,17 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class LeastConnection implements LoadBalancer {
     @Getter
-    private static final Map<String, ConcurrentHashMap<Integer, Integer>> serviceConnectionCounts = new HashMap<>();
+    private static final ConcurrentHashMap<String, ConcurrentHashMap<Integer, Integer>> serviceConnectionCounts = new ConcurrentHashMap<>();
 
     @Override
     public ServiceProviderInstance choose(String serviceId, List<ServiceProviderInstance> instances, String clientIP) {
-        if(!serviceConnectionCounts.containsKey(serviceId)) {
-            synchronized (serviceId) {
-                if(!serviceConnectionCounts.containsKey(serviceId)) {
-                    serviceConnectionCounts.put(serviceId, new ConcurrentHashMap<>());
-                }
-            }
-        }
+        serviceConnectionCounts.putIfAbsent(serviceId, new ConcurrentHashMap<>());
         Map<Integer, Integer> instanceConnectionCounts = serviceConnectionCounts.get(serviceId);
         ServiceProviderInstance minConnectionService = instances.get(0);
         int minConnection = instanceConnectionCounts.getOrDefault(minConnectionService.getPort(), 0);
         for(ServiceProviderInstance instance : instances) {
             int port = instance.getPort();
-            if(!instanceConnectionCounts.containsKey(port)) {
-                synchronized (serviceId) {
-                    if(!instanceConnectionCounts.containsKey(port)) {
-                        instanceConnectionCounts.put(port, 0);
-                    }
-                }
-            }
+            instanceConnectionCounts.putIfAbsent(port, 0);
             if(instanceConnectionCounts.get(port) < minConnection) {
                 minConnectionService = instance;
                 minConnection = instanceConnectionCounts.get(port);
@@ -47,21 +35,9 @@ public class LeastConnection implements LoadBalancer {
 
     // 在成功转发请求后给选中的服务实例增加连接数
     public static void increaseConnection(String serviceId, int port) {
-        if(!serviceConnectionCounts.containsKey(serviceId)) {
-            synchronized (serviceId) {
-                if(!serviceConnectionCounts.containsKey(serviceId)) {
-                    serviceConnectionCounts.put(serviceId, new ConcurrentHashMap<>());
-                }
-            }
-        }
+        serviceConnectionCounts.putIfAbsent(serviceId, new ConcurrentHashMap<>());
         Map<Integer, Integer> instanceConnectionCounts = serviceConnectionCounts.get(serviceId);
-        if(!instanceConnectionCounts.containsKey(port)) {
-            synchronized (serviceId) {
-                if(!instanceConnectionCounts.containsKey(port)) {
-                    instanceConnectionCounts.put(port, 0);
-                }
-            }
-        }
+        instanceConnectionCounts.putIfAbsent(port, 0);
         instanceConnectionCounts.put(port, instanceConnectionCounts.get(port) + 1);
     }
 

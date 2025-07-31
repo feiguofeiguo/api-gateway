@@ -6,25 +6,20 @@ import com.bank.gateway.router.entity.ServiceProviderInstance;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /*
  * 带权重的轮询算法做负载均衡
  */
 public class WeightedRoundRobin implements LoadBalancer {
-    private final Map<String, AtomicInteger> indexes = new HashMap<>();
+    private final Map<String, AtomicInteger> indexes = new ConcurrentHashMap<>();
 
     private final String WEIGHT = "nacos.weight";
 
     @Override
     public ServiceProviderInstance choose(String serviceId, List<ServiceProviderInstance> instances, String clientIP) {
-        if(!indexes.containsKey(serviceId)) {
-            synchronized(serviceId) {
-                if(!indexes.containsKey(serviceId)) {
-                    indexes.put(serviceId, new AtomicInteger(-1));
-                }
-            }
-        }
+        indexes.putIfAbsent(serviceId, new AtomicInteger(-1));
         int totalWeight = 0;
         for(ServiceProviderInstance instance : instances) {
             totalWeight += (int)Double.parseDouble(instance.getMetadata().get(WEIGHT));
