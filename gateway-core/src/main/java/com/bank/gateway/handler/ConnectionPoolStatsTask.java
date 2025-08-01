@@ -12,19 +12,19 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class ConnectionPoolStatsTask {
     
-    @Autowired
-    private ConnectionPool connectionPool;
-    
-    @Autowired
-    private ConnectionPoolConfig config;
-    
-    /**
-     * 每分钟打印一次连接池统计信息
-     */
-    @Scheduled(fixedRate = 60000) // 每分钟执行一次
-    public void printPoolStats() {
-        if (config.isStatsEnabled()) {
-            connectionPool.printPoolStats();
-        }
-    }
+//    @Autowired
+//    private ConnectionPool connectionPool;
+//
+//    @Autowired
+//    private ConnectionPoolConfig config;
+//
+//    /**
+//     * 每分钟打印一次连接池统计信息
+//     */
+//    @Scheduled(fixedRate = 60000) // 每分钟执行一次
+//    public void printPoolStats() {
+//        if (config.isStatsEnabled()) {
+//            connectionPool.printPoolStats();
+//        }
+//    }
 } 

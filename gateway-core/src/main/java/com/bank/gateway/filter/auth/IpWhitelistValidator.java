@@ -14,7 +14,7 @@ import java.util.Set;
 public class IpWhitelistValidator {
     private static final Set<String> WHITELIST = Collections.unmodifiableSet(
             // TODO-数据 后期从数据库中读取
-            new HashSet<>(Arrays.asList("127.0.0.1", "192.168.1.100","0.0.0.0.0.0.0.1"))
+            new HashSet<>(Arrays.asList("127.0.0.1", "192.168.1.100","0.0.0.0.0.0.0.1","220.196.194.198","172.83.159.142","39.144.43.214"))
     );
 
     public void validate(String ip) throws AuthException {
