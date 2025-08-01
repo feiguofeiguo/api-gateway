@@ -19,8 +19,7 @@ mybatis-plus:
   mapper-locations: classpath*:mapper/**/*.xml
   type-aliases-package: com.example.entity
 
-
 #日志配置
 logging:
-  level:
-    com.bank.gateway: debug
+  config: classpath:logback-spring.xml
+
