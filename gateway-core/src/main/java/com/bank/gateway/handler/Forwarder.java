@@ -5,6 +5,7 @@ import com.bank.gateway.plugin.GatewayPlugin;
 import com.bank.gateway.plugin.PluginChain;
 import com.bank.gateway.plugin.PluginContext;
 import com.bank.gateway.router.entity.ServiceProviderInstance;
+import com.bank.gateway.monitor.server.MetricsServer;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -13,6 +14,7 @@ import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.*;
 import io.netty.util.CharsetUtil;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -23,6 +25,9 @@ public class Forwarder implements GatewayPlugin {
     private static final EventLoopGroup group = new NioEventLoopGroup();
     private static ThreadLocal<String> serviceIdContext = new ThreadLocal<>();
     private static ThreadLocal<ServiceProviderInstance> instanceContext = new ThreadLocal<>();
+
+    @Autowired
+    private MetricsServer metricsServer;
 
     @Override
     public String name() { return "ForwarderPlugin"; }
@@ -138,7 +143,7 @@ public class Forwarder implements GatewayPlugin {
     /**
      * 处理从目标服务返回的响应
      */
-    private static class ForwardResponseHandler extends SimpleChannelInboundHandler<FullHttpResponse> {
+    private class ForwardResponseHandler extends SimpleChannelInboundHandler<FullHttpResponse> {
         private final ChannelHandlerContext originalCtx;
 
         public ForwardResponseHandler(ChannelHandlerContext originalCtx) {
@@ -147,9 +152,13 @@ public class Forwarder implements GatewayPlugin {
 
         @Override
         protected void channelRead0(ChannelHandlerContext ctx, FullHttpResponse response) {
+            // Length of response
+            metricsServer.getResponseSize().update(response.content().readableBytes());
             // 将响应写回原始客户端
             log.debug("response:" + response);
             originalCtx.writeAndFlush(response.retain()).addListener(ChannelFutureListener.CLOSE);
+            // Number of success jobs.
+            metricsServer.getSuccessJobs().inc();
             // 在请求响应后给选中的服务实例减少连接数
             LeastConnection.releaseConnection(serviceIdContext.get(), instanceContext.get().getPort());
             ctx.close();

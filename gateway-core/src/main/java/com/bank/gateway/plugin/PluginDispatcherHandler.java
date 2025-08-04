@@ -1,15 +1,22 @@
 package com.bank.gateway.plugin;
 
+import com.bank.gateway.monitor.server.MetricsServer;
+import com.codahale.metrics.Timer;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.FullHttpRequest;
+
 import java.util.List;
 
 public class PluginDispatcherHandler extends ChannelInboundHandlerAdapter {
     private final PluginManager pluginManager;
 
-    public PluginDispatcherHandler(PluginManager pluginManager) {
+    private final MetricsServer metricsServer;
+
+
+    public PluginDispatcherHandler(PluginManager pluginManager, MetricsServer metricsServer) {
         this.pluginManager = pluginManager;
+        this.metricsServer = metricsServer;
     }
 
     @Override
@@ -18,11 +25,22 @@ public class PluginDispatcherHandler extends ChannelInboundHandlerAdapter {
             ctx.fireChannelRead(msg);
             return;
         }
-        FullHttpRequest request = (FullHttpRequest) msg;
-        PluginContext pluginContext = new PluginContext(request, ctx);
-        List<GatewayPlugin> plugins = pluginManager.getPlugins();
-        PluginChain chain = new PluginChainImpl(plugins, 0);
-        chain.doNext(pluginContext);
+        Timer.Context context = null;
+        try {
+            FullHttpRequest request = (FullHttpRequest) msg;
+            // Number of all income jobs
+            metricsServer.getTotalJobs().inc();
+            // Length of request message calculate by histogram
+            metricsServer.getRequestSize().update(request.content().readableBytes());
+            // Timer start
+            context = metricsServer.getResponsesTime().time();
+            PluginContext pluginContext = new PluginContext(request, ctx);
+            List<GatewayPlugin> plugins = pluginManager.getPlugins();
+            PluginChain chain = new PluginChainImpl(plugins, 0);
+            chain.doNext(pluginContext);
+        } finally {
+            context.stop();
+        }
     }
 
     // 插件链实现
