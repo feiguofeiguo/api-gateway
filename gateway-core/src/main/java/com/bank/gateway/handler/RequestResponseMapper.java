@@ -24,7 +24,7 @@ public class RequestResponseMapper {
     /**
      * 生成唯一的请求ID
      */
-    public String generateRequestId() {
+    public static String generateRequestId() {
         return "req_" + REQUEST_ID_GENERATOR.incrementAndGet() + "_" + System.currentTimeMillis();
     }
     

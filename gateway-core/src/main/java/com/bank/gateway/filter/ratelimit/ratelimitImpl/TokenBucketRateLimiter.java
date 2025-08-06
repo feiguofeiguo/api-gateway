@@ -1,60 +1,37 @@
 package com.bank.gateway.filter.ratelimit.ratelimitImpl;
 
+import com.bank.gateway.filter.ratelimit.LuaScriptManager;
 import com.bank.gateway.filter.ratelimit.RateLimitConfigService;
 import com.bank.gateway.filter.ratelimit.RateLimiter;
-import org.springframework.data.redis.core.StringRedisTemplate;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.util.HashMap;
-import java.util.Map;
-
+@Slf4j
 @Component("tokenBucketRateLimiter")
 public class TokenBucketRateLimiter implements RateLimiter {
 
-    private final StringRedisTemplate redisTemplate;
+    private final LuaScriptManager luaScriptManager;
 
-    public TokenBucketRateLimiter(StringRedisTemplate redisTemplate) {
-        this.redisTemplate = redisTemplate;
+    public TokenBucketRateLimiter(LuaScriptManager luaScriptManager) {
+        this.luaScriptManager = luaScriptManager;
     }
 
     @Override
     public boolean allowRequest(String key, RateLimitConfigService.LimitConfig config) {
+        long start = System.nanoTime();
+        
         String redisKey = "rate_limit:" + key;
         long now = System.currentTimeMillis();
-        // 令牌桶状态结构
-        Map<String, String> bucket = redisTemplate.<String, String>opsForHash().entries(redisKey);
         int capacity = config.getTkbCapacity();
         int rate = config.getTkbRate();
-        int tokens = capacity;
-        long lastRefillTime = now;
+        int expireSeconds = 2 * 60; // 2分钟过期时间
 
-        if (!bucket.isEmpty()) {
-            tokens = Integer.parseInt(bucket.getOrDefault("tokens", String.valueOf(capacity)));
-            lastRefillTime = Long.parseLong(bucket.getOrDefault("lastRefillTime", String.valueOf(now)));
-            // 补充令牌
-            long delta = (now - lastRefillTime) / 1000;
-            if (delta > 0) {
-                int addTokens = (int) (delta * rate);
-                tokens = Math.min(capacity, tokens + addTokens);
-                lastRefillTime = now;
-            }
-        }
-        if (tokens > 0) {
-            tokens--;
-            Map<String, String> newBucket = new HashMap<>();
-            newBucket.put("tokens", String.valueOf(tokens));
-            newBucket.put("lastRefillTime", String.valueOf(lastRefillTime));
-            redisTemplate.opsForHash().putAll(redisKey, newBucket);
-            redisTemplate.expire(redisKey, 2 * 60, java.util.concurrent.TimeUnit.SECONDS);
-            return true;
-        } else {
-            // 没有令牌，限流
-            Map<String, String> newBucket = new HashMap<>();
-            newBucket.put("tokens", String.valueOf(tokens));
-            newBucket.put("lastRefillTime", String.valueOf(lastRefillTime));
-            redisTemplate.opsForHash().putAll(redisKey, newBucket);
-            redisTemplate.expire(redisKey, 2 * 60, java.util.concurrent.TimeUnit.SECONDS);
-            return false;
-        }
+        // 使用Lua脚本执行令牌桶算法
+        boolean result = luaScriptManager.executeTokenBucket(redisKey, now, capacity, rate, expireSeconds);
+        
+        long end = System.nanoTime();
+        log.debug("【TokenBucketRateLimiter】总耗时: {} ns, 约 {} us", end - start, (end - start) / 1000.0);
+        
+        return result;
     }
 }

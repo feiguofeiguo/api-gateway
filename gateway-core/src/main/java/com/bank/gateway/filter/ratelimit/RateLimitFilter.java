@@ -2,11 +2,13 @@ package com.bank.gateway.filter.ratelimit;
 
 import com.bank.gateway.filter.auth.JwtValidator;
 import com.bank.gateway.filter.auth.AuthException;
+import com.bank.gateway.filter.ratelimit.ratelimitImpl.FixedWindowRateLimiter;
 import com.bank.gateway.filter.ratelimit.ratelimitImpl.SlidingWindowRateLimiter;
 import com.bank.gateway.filter.ratelimit.ratelimitImpl.TokenBucketRateLimiter;
 import com.bank.gateway.plugin.GatewayPlugin;
 import com.bank.gateway.plugin.PluginChain;
 import com.bank.gateway.plugin.PluginContext;
+import io.jsonwebtoken.Claims;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.handler.codec.http.*;
@@ -26,6 +28,8 @@ public class RateLimitFilter implements GatewayPlugin {
     private TokenBucketRateLimiter tokenBucketRateLimiter;
     @Autowired
     private SlidingWindowRateLimiter slidingWindowRateLimiter;
+    @Autowired
+    private FixedWindowRateLimiter fixedWindowRateLimiter;
 
     @Override
     public String name() { return "RateLimitPlugin"; }
@@ -36,36 +40,61 @@ public class RateLimitFilter implements GatewayPlugin {
 
     @Override
     public void execute(PluginContext context, PluginChain chain) {
+        long start = System.nanoTime();
         FullHttpRequest request = context.getRequest();
         ChannelHandlerContext ctx = context.getNettyCtx();
         try {
-            // userId 从 JWT 中获取，serviceId 从插进context获取
-            String jwt = JwtValidator.extractJwt(request);
-            String userId = JwtValidator.parseUserIdFromJwt(jwt);
+            // 计时：JWT提取和解析
+            long jwtStart = System.nanoTime();
+            Claims jwtClaims = context.getRequestJwtClaims();
+            String userId = jwtClaims.get("user_id", String.class);     //JwtValidator.parseUserIdFromJwt(jwtClaims);
             String serviceId = context.getServiceId();
+            long jwtEnd = System.nanoTime();
+            log.debug("{}-【JWT处理】耗时: {} ns", context.getRequestId(), jwtEnd - jwtStart);
+            
             if (userId == null || serviceId == null) {
                 sendError(ctx, "Missing userId or serviceId", HttpResponseStatus.BAD_REQUEST);
                 return;
             }
-            String key = serviceId + ":" + userId;
+            
+            // 计时：配置获取
+            long configStart = System.nanoTime();
+            String key = serviceId;// + ":" + userId;
             RateLimitConfigService.LimitConfig config = configService.getConfig(serviceId);
+            long configEnd = System.nanoTime();
+            log.debug("{}-【配置获取】耗时: {} ns", context.getRequestId(), configEnd - configStart);
+            
             log.debug("service_id: {} with {}", serviceId, config);
-            //进行限流
+            
+            // 计时：限流器执行
+            long rateLimitStart = System.nanoTime();
             boolean allowed;  //是否允许通过
             if (config.getType() == RateLimitEnum.TOKEN_BUCKET) {   //config控制走哪个限流器
                 allowed = tokenBucketRateLimiter.allowRequest(key, config);   //限流器执行具体限流工作
             } else if (config.getType() == RateLimitEnum.SLIDING_WINDOW) {
                 allowed = slidingWindowRateLimiter.allowRequest(key, config);
+            } else if (config.getType() == RateLimitEnum.FIXED_WINDOW) {
+                allowed = fixedWindowRateLimiter.allowRequest(key, config);
             } else {
                 allowed = true;
             }
+            long rateLimitEnd = System.nanoTime();
+            log.warn("{}-【限流器执行】耗时: {} ns, 约 {} us", context.getRequestId(),
+                     rateLimitEnd - rateLimitStart, (rateLimitEnd - rateLimitStart) / 1000.0);
+            
             if (!allowed) {
                 sendError(ctx, "Too Many Requests", HttpResponseStatus.TOO_MANY_REQUESTS);
                 return;
             }
             log.debug("插件版-流量控制，通过！");
+            long end = System.nanoTime();
+            log.warn("{}-【RateLimitFilter】总耗时: {} ns, 约 {} us, {} ms", context.getRequestId(), 
+                     end - start, (end - start)/1000.0, (end - start)/1000000.0);
             chain.doNext(context);
-        } catch (AuthException e) {
+        } catch (RateLimitException e) {
+            long end = System.nanoTime();
+            log.warn("{}-【RateLimitFilter】异常耗时: {} ns, 约 {} us, {} ms", context.getRequestId(), 
+                     end - start, (end - start)/1000.0, (end - start)/1000000.0);
             sendError(ctx, e.getMessage(), HttpResponseStatus.BAD_REQUEST);
         }
     }

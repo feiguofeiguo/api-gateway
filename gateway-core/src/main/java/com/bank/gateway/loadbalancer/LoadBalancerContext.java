@@ -39,6 +39,7 @@ public class LoadBalancerContext implements GatewayPlugin {
 
     @Override
     public void execute(PluginContext context, PluginChain chain) {
+        long start = System.nanoTime();
         String serviceId = context.getServiceId();
         log.debug("serviceId:{}", serviceId);
         ChannelHandlerContext ctx = context.getNettyCtx();
@@ -59,6 +60,8 @@ public class LoadBalancerContext implements GatewayPlugin {
         }
         context.setInstance(instance);
         log.debug("插件版-负载均衡，选择实例: {}", instance);
+        long end = System.nanoTime();
+        log.warn("{}-【LoadBalancer】耗时: {} ns, 约 {} us, {} ms", context.getRequestId(), end - start,(end - start)/1000.0,(end - start)/1000000.0);
         chain.doNext(context);
     }
 

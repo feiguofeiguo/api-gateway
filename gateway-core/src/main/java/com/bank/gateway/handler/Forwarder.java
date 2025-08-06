@@ -52,14 +52,18 @@ public class Forwarder implements GatewayPlugin {
 
     @Override
     public void execute(PluginContext context, PluginChain chain) {
+        long start = System.nanoTime();
         FullHttpRequest request = context.getRequest();
         ServiceProviderInstance instance = context.getInstance();
         ChannelHandlerContext ctx = context.getNettyCtx();
-        forward(request, instance, ctx);
+        String requestId=context.getRequestId();
+        forward(request, instance, ctx, requestId);
         log.debug("插件版-转发回传，完成！");
+        long end = System.nanoTime();
+        log.warn("{}-【Forwarder】耗时: {} ns, 约 {} us, {} ms", context.getRequestId(), end - start,(end - start)/1000.0,(end - start)/1000000.0);
     }
 
-    public void forward(FullHttpRequest request, ServiceProviderInstance instance, ChannelHandlerContext ctx) {
+    public void forward(FullHttpRequest request, ServiceProviderInstance instance, ChannelHandlerContext ctx,String requestId) {
         log.debug("===Call forward===");
         if (instance == null) {
             sendErrorResponse(ctx, "No available service instance");
@@ -67,7 +71,6 @@ public class Forwarder implements GatewayPlugin {
         }
         log.debug("instance:" + instance);
 
-        String requestId = requestResponseMapper.generateRequestId();
         requestResponseMapper.registerRequest(requestId, ctx);
         log.info("forward: requestId={}, frontendCtxHash={}, instance={}", requestId, ctx.hashCode(), instance);
         log.debug(requestId+" 用于处理 request name: "+request.headers().get("REQUEST-NAME"));
@@ -83,7 +86,7 @@ public class Forwarder implements GatewayPlugin {
                     FullHttpRequest forwardRequest = createForwardRequest(request, instance, requestId);
                     backendChannel.writeAndFlush(forwardRequest);
                 } else {
-                    sendErrorResponse(ctx, "后端服务连接失败");
+                    sendErrorResponse(ctx, "后端服务连接失败");  //here 此处报错过，高并发下
                 }
             });
         } catch (Exception e) {

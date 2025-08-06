@@ -9,6 +9,15 @@ spring:
     port: 6379
     password:   # 如果有密码，填上
     database: 0
+    timeout: 2000ms
+    lettuce:
+      pool:
+        max-active: 32
+        max-idle: 16
+        min-idle: 8
+        max-wait: 1000ms
+    connect-timeout: 1000ms
+
   config:
     import: classpath:ratelimit.yml
 
@@ -23,4 +32,5 @@ mybatis-plus:
 #日志配置
 logging:
   level:
-    com.bank.gateway: debug
+    com.bank.gateway: warn
+    com.bank.gateway.filter.ratelimit: warn

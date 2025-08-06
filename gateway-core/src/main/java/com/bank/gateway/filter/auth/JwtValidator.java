@@ -26,22 +26,23 @@ public class JwtValidator {
         return authHeader.substring(7);
     }
 
-    public void validate(String jwt) throws AuthException {
+    public Claims validate(String jwt) throws AuthException {
         log.debug("clientJWT: {}", jwt);
+        Claims claims = null;
         try {
-            Jwts.parser().setSigningKey(JWT_SECRET.getBytes()).parseClaimsJws(jwt);
+            claims = Jwts.parser().setSigningKey(JWT_SECRET.getBytes()).parseClaimsJws(jwt).getBody();
         } catch (Exception e) {
             // TODO-功能 如果过期，这里也会抛出异常，那么APIG应该主动生成一个JWT，然后发过去，客户端看到响应体中有JWT字段，也就知道要重传了
             throw new AuthException("Invalid JWT");
         }
+        return claims;
     }
 
     /*
      * 验证请求能否访问其申请的微服务
      */
-    public boolean hasIaPermission(String jwt,String serviceId) {
+    public boolean hasIaPermission(Claims claims,String serviceId) {
         try {
-            Claims claims = Jwts.parser().setSigningKey(JWT_SECRET.getBytes()).parseClaimsJws(jwt).getBody();
             // 假设权限字段为"permission"，包含"serviceId"
             Object roles = claims.get("permission");
             return roles != null && roles.toString().contains(serviceId);
@@ -73,13 +74,8 @@ public class JwtValidator {
                 .compact();
     }
 
-    public static String parseUserIdFromJwt(String jwt_token) {
-        Claims claims = Jwts.parser()
-                .setSigningKey(JWT_SECRET.getBytes())  // 使用相同的密钥
-                .parseClaimsJws(jwt_token)
-                .getBody();
-
-        return claims.get("user_id", String.class);
+    public static String parseUserIdFromJwt(Claims jwtClaims) {
+        return jwtClaims.get("user_id", String.class);
     }
 
 }

@@ -38,6 +38,7 @@ public class RouterService implements GatewayPlugin {
 
     @Override
     public void execute(PluginContext context, PluginChain chain) {
+        long start = System.nanoTime();
         String uri = context.getRequest().uri();
         String serviceId = context.getServiceId();
         log.debug("serviceId: " + serviceId);
@@ -56,6 +57,8 @@ public class RouterService implements GatewayPlugin {
             return;
         }
         log.debug("插件版-路由-获取微服务名，成功！");
+        long end = System.nanoTime();
+        log.warn("{}-【RouterService】耗时: {} ns, 约 {} us, {} ms", context.getRequestId(), end - start,(end - start)/1000.0,(end - start)/1000000.0);
         chain.doNext(context);
     }
 

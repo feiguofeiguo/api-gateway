@@ -1,40 +1,37 @@
 package com.bank.gateway.filter.ratelimit.ratelimitImpl;
 
+import com.bank.gateway.filter.ratelimit.LuaScriptManager;
 import com.bank.gateway.filter.ratelimit.RateLimitConfigService;
 import com.bank.gateway.filter.ratelimit.RateLimiter;
-import org.springframework.data.redis.core.StringRedisTemplate;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.util.concurrent.TimeUnit;
-
+@Slf4j
 @Component("slidingWindowRateLimiter")
 public class SlidingWindowRateLimiter implements RateLimiter {
 
-    private final StringRedisTemplate redisTemplate;
+    private final LuaScriptManager luaScriptManager;
 
-    public SlidingWindowRateLimiter(StringRedisTemplate redisTemplate) {
-        this.redisTemplate = redisTemplate;
+    public SlidingWindowRateLimiter(LuaScriptManager luaScriptManager) {
+        this.luaScriptManager = luaScriptManager;
     }
 
     @Override
     public boolean allowRequest(String key, RateLimitConfigService.LimitConfig config) {
+        long start = System.nanoTime();
+        
         String redisKey = "sliding_window:" + key;
         long now = System.currentTimeMillis();
         long windowMillis = config.getSlwWindow() * 1000L;
-        long minTime = now - windowMillis;
+        int threshold = config.getSlwThreshold();
+        int expireSeconds = config.getSlwWindow() * 2; // 窗口大小的2倍作为过期时间
 
-        // 移除窗口外的请求
-        redisTemplate.opsForZSet().removeRangeByScore(redisKey, 0, minTime);
-
-        // 统计窗口内请求数
-        Long count = redisTemplate.opsForZSet().zCard(redisKey);
-        if (count != null && count < config.getSlwThreshold()) {
-            // 允许请求，记录本次
-            redisTemplate.opsForZSet().add(redisKey, String.valueOf(now), now);
-            redisTemplate.expire(redisKey, config.getSlwWindow() * 2L, TimeUnit.SECONDS);
-            return true;
-        } else {
-            return false;
-        }
+        // 使用Lua脚本执行滑动窗口算法
+        boolean result = luaScriptManager.executeSlidingWindow(redisKey, now, windowMillis, threshold, expireSeconds);
+        
+        long end = System.nanoTime();
+        log.debug("【SlidingWindowRateLimiter】总耗时: {} ns, 约 {} us", end - start, (end - start) / 1000.0);
+        
+        return result;
     }
 }

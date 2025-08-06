@@ -1,8 +1,10 @@
 package com.bank.gateway.filter.auth;
 
+import com.bank.gateway.handler.RequestResponseMapper;
 import com.bank.gateway.plugin.GatewayPlugin;
 import com.bank.gateway.plugin.PluginChain;
 import com.bank.gateway.plugin.PluginContext;
+import io.jsonwebtoken.Claims;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
@@ -41,18 +43,30 @@ public class AuthFilter implements GatewayPlugin {
 
     @Override
     public void execute(PluginContext context, PluginChain chain) {
+        long start = System.nanoTime();
+        String requestId=RequestResponseMapper.generateRequestId();
+        context.setRequestId(requestId);
+
         FullHttpRequest request = context.getRequest();
         ChannelHandlerContext ctx = context.getNettyCtx();
         try {
+
             // 1. 校验 API Key
             apiKeyValidator.validate(request);
+            long nowApiKey = System.nanoTime();
+            log.debug("apikey validate request time: {}", nowApiKey-start);
             // 2. 校验签名
             signatureValidator.validate(request);
+            long nowSignatureValidator = System.nanoTime();
+            log.debug("nowSignatureValidator validate request time: {}", nowSignatureValidator-nowApiKey);
             // 3. 校验 IP 白名单
             String clientIp = ((InetSocketAddress) ctx.channel().remoteAddress()).getAddress().getHostAddress();
             ipWhitelistValidator.validate(clientIp);
+            long nowClientIp = System.nanoTime();
+            log.debug("nowClientIp validate request time: {}", nowClientIp-nowSignatureValidator);
             // 4. 校验 JWT
             String jwt = JwtValidator.extractJwt(request);
+            Claims jwtClaims=null;
             if (Objects.equals(jwt, "") || jwt.isEmpty()) {
                 String newJwt = jwtValidator.issueJwt();
                 log.debug("newJwt = {}", newJwt);
@@ -60,18 +74,28 @@ public class AuthFilter implements GatewayPlugin {
                 sendJwtResponse(ctx, newJwt);
                 return;
             } else {
-                jwtValidator.validate(jwt);
+                jwtClaims=jwtValidator.validate(jwt);
             }
+            context.setRequestJwtClaims(jwtClaims);
+            long nowJwt = System.nanoTime();
+            log.debug("nowJwt validate request time: {}", nowJwt-nowClientIp);
             // 5. 权限判断
             String serviceId = getServiceId(request.uri());
             context.setServiceId(serviceId);   //设置微服务名，后续可以直接使用
-            if (!jwtValidator.hasIaPermission(jwt, serviceId)) {
+            if (!jwtValidator.hasIaPermission(jwtClaims, serviceId)) {
                 throw new AuthException("No microService permission");
             }
+            long nowPermission = System.nanoTime();
+            log.debug("nowPermission validate request time: {}", nowPermission-nowJwt);
+
             log.debug("插件版-安全认证，通过！");
+            long end = System.nanoTime();
+            log.warn("{}-【AuthFilter】耗时: {} ns, 约 {} us, {} ms", context.getRequestId(), end - start,(end - start)/1000.0,(end - start)/1000000.0);
             chain.doNext(context);   // 认证通过，进入下一个插件
         } catch (AuthException e) {
             log.warn("认证失败: {}", e.getMessage());
+            long end = System.nanoTime();
+            log.warn("{}-【AuthFilter】耗时: {} ns, 约 {} us, {} ms", context.getRequestId(), end - start,(end - start)/1000.0,(end - start)/1000000.0);
             sendAuthError(ctx, e.getMessage());
         }
     }
