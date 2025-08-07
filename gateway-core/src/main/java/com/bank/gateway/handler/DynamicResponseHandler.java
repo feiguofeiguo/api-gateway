@@ -5,6 +5,7 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.util.AttributeKey;
 import io.netty.util.CharsetUtil;
+import io.netty.util.ReferenceCountUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import io.netty.channel.ChannelHandler;
@@ -44,6 +45,8 @@ public class DynamicResponseHandler extends SimpleChannelInboundHandler<FullHttp
             requestResponseMapper.removeRequest(requestId);
         } else {
             log.warn("无法找到前端上下文或requestId: {}", requestId);
+            // 如果无法找到前端上下文，确保释放response
+            ReferenceCountUtil.release(response);
         }
         ctx.close(); // 关闭后端channel
     }
@@ -53,4 +56,4 @@ public class DynamicResponseHandler extends SimpleChannelInboundHandler<FullHttp
         log.error("动态响应处理器异常: {}", cause.getMessage());
         ctx.close();
     }
-} 
+}

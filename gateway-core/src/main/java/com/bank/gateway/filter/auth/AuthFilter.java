@@ -13,6 +13,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.util.AttributeKey;
 import io.netty.util.CharsetUtil;
+import io.netty.util.ReferenceCountUtil;
 import lombok.extern.slf4j.Slf4j;
 
 import java.net.InetSocketAddress;
@@ -71,7 +72,7 @@ public class AuthFilter implements GatewayPlugin {
                 String newJwt = jwtValidator.issueJwt();
                 log.debug("newJwt = {}", newJwt);
                 ctx.channel().attr(NEW_JWT_KEY).set(newJwt);
-                sendJwtResponse(ctx, newJwt);
+                sendJwtResponse(ctx, request, newJwt);
                 return;
             } else {
                 jwtClaims=jwtValidator.validate(jwt);
@@ -96,11 +97,11 @@ public class AuthFilter implements GatewayPlugin {
             log.warn("认证失败: {}", e.getMessage());
             long end = System.nanoTime();
             log.warn("{}-【AuthFilter】耗时: {} ns, 约 {} us, {} ms", context.getRequestId(), end - start,(end - start)/1000.0,(end - start)/1000000.0);
-            sendAuthError(ctx, e.getMessage());
+            sendAuthError(ctx, request, e.getMessage());
         }
     }
 
-    private void sendAuthError(ChannelHandlerContext ctx, String message) {
+    private void sendAuthError(ChannelHandlerContext ctx, FullHttpRequest request, String message) {
         FullHttpResponse response = new io.netty.handler.codec.http.DefaultFullHttpResponse(
                 HttpVersion.HTTP_1_1,
                 HttpResponseStatus.UNAUTHORIZED,
@@ -109,14 +110,18 @@ public class AuthFilter implements GatewayPlugin {
         response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/plain;charset=UTF-8");
         response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
         ctx.writeAndFlush(response).addListener(io.netty.channel.ChannelFutureListener.CLOSE);
+        
+        // 释放原始请求
+        ReferenceCountUtil.release(request);
     }
 
     /**
      * 生成JWT并下发给客户端
      * @param ctx ChannelHandlerContext
+     * @param request FullHttpRequest
      * @param newJwt 生成的JWT字符串
      */
-    private void sendJwtResponse(ChannelHandlerContext ctx, String newJwt) {
+    private void sendJwtResponse(ChannelHandlerContext ctx, FullHttpRequest request, String newJwt) {
         String responseBody = "{\"jwt\":\"" + newJwt + "\"}";
         FullHttpResponse response = new io.netty.handler.codec.http.DefaultFullHttpResponse(
                 HttpVersion.HTTP_1_1,
@@ -126,6 +131,9 @@ public class AuthFilter implements GatewayPlugin {
         response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json;charset=UTF-8");
         response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
         ctx.writeAndFlush(response).addListener(io.netty.channel.ChannelFutureListener.CLOSE);
+        
+        // 释放原始请求
+        ReferenceCountUtil.release(request);
     }
 
     /**
@@ -157,4 +165,4 @@ public class AuthFilter implements GatewayPlugin {
         log.debug("queryId: "+queryId);
         return queryId;
     }
-} 
+}

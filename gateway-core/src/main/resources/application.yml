@@ -12,11 +12,13 @@ spring:
     timeout: 2000ms
     lettuce:
       pool:
-        max-active: 32
-        max-idle: 16
-        min-idle: 8
-        max-wait: 1000ms
-    connect-timeout: 1000ms
+        max-active: 100  # 调整为压测线程数的1-1.5倍
+        max-idle: 50      # 约为max-active的50-70%
+        min-idle: 20      # 适当提高保持的连接数
+        max-wait: 500ms      # 减少等待时间，快速失败
+      timeout:
+        connect-timeout: 500ms
+        command-timeout: 300ms  # 添加命令超时控制
 
   config:
     import: classpath:ratelimit.yml
@@ -32,5 +34,6 @@ mybatis-plus:
 #日志配置
 logging:
   level:
-    com.bank.gateway: warn
-    com.bank.gateway.filter.ratelimit: warn
+    com.bank.gateway: error
+    #com.bank.gateway.filter.ratelimit: warn
+    #com.bank.gateway.filter.ratelimit.GlobalRateLimiter: warn

@@ -1,5 +1,6 @@
 package com.bank.gateway.server;
 
+import com.bank.gateway.filter.ratelimit.RateLimitHandler;
 import com.bank.gateway.plugin.PluginDispatcherHandler;
 import com.bank.gateway.router.RouterService;
 import io.netty.bootstrap.ServerBootstrap;
@@ -22,6 +23,8 @@ public class NettyHttpServer implements CommandLineRunner {
     private RouterService routerService;
     @Autowired
     private  PluginManager pluginManager;
+    @Autowired
+    private RateLimitHandler rateLimitHandler;
 
     private void startServer() throws InterruptedException {
         EventLoopGroup bossGroup = new NioEventLoopGroup(1);
@@ -36,6 +39,8 @@ public class NettyHttpServer implements CommandLineRunner {
                             ChannelPipeline pipeline = ch.pipeline();
                             pipeline.addLast(new HttpServerCodec());
                             pipeline.addLast(new HttpObjectAggregator(65536));
+                            // 在PluginDispatcherHandler之前添加RateLimitHandler
+                            pipeline.addLast(rateLimitHandler);
                             pipeline.addLast(new PluginDispatcherHandler(pluginManager));
                         }
                     });

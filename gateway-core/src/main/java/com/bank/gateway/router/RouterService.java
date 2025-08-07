@@ -8,6 +8,7 @@ import com.bank.gateway.router.entity.ServiceProviderInstance;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.*;
+import io.netty.util.ReferenceCountUtil;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -39,7 +40,8 @@ public class RouterService implements GatewayPlugin {
     @Override
     public void execute(PluginContext context, PluginChain chain) {
         long start = System.nanoTime();
-        String uri = context.getRequest().uri();
+        FullHttpRequest request = context.getRequest();
+        String uri = request.uri();
         String serviceId = context.getServiceId();
         log.debug("serviceId: " + serviceId);
         //serviceId=getMicroServiceId(serviceId);
@@ -54,6 +56,9 @@ public class RouterService implements GatewayPlugin {
             response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/plain;charset=UTF-8");
             response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
             ctx.writeAndFlush(response).addListener(ChannelFutureListener.CLOSE);
+            
+            // 释放原始请求
+            ReferenceCountUtil.release(request);
             return;
         }
         log.debug("插件版-路由-获取微服务名，成功！");

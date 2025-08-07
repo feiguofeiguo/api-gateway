@@ -33,7 +33,7 @@ public class PluginManager {
     @PostConstruct
     public void initPlugins() {
         plugins.add(authFilter);
-        plugins.add(rateLimitFilter);
+        //plugins.add(rateLimitFilter);
         plugins.add(routerService);
         plugins.add(loadBalancerContext);
         plugins.add(forwarder);
