@@ -30,10 +30,7 @@ mybatis-plus:
   mapper-locations: classpath*:mapper/**/*.xml
   type-aliases-package: com.example.entity
 
-
 #日志配置
 logging:
   level:
-    com.bank.gateway: error
-    #com.bank.gateway.filter.ratelimit: warn
-    #com.bank.gateway.filter.ratelimit.GlobalRateLimiter: warn
+    com.bank.gateway: debug
