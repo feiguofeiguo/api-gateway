@@ -49,11 +49,19 @@ public class Forwarder implements GatewayPlugin {
     private MetricsServer metricsServer;
 
     @Override
-    public String name() { return "ForwarderPlugin"; }
+    public String name() {
+        return "ForwarderPlugin";
+    }
+
     @Override
-    public int order() { return 50; }
+    public int order() {
+        return 50;
+    }
+
     @Override
-    public boolean enabled() { return true; }
+    public boolean enabled() {
+        return true;
+    }
 
     @Override
     public void execute(PluginContext context, PluginChain chain) {
@@ -61,14 +69,14 @@ public class Forwarder implements GatewayPlugin {
         FullHttpRequest request = context.getRequest();
         ServiceProviderInstance instance = context.getInstance();
         ChannelHandlerContext ctx = context.getNettyCtx();
-        String requestId=context.getRequestId();
+        String requestId = context.getRequestId();
         forward(request, instance, ctx, requestId);
         log.debug("插件版-转发回传，完成！");
         long end = System.nanoTime();
-        log.warn("{}-【Forwarder】耗时: {} ns, 约 {} us, {} ms", context.getRequestId(), end - start,(end - start)/1000.0,(end - start)/1000000.0);
+        log.warn("{}-【Forwarder】耗时: {} ns, 约 {} us, {} ms", context.getRequestId(), end - start, (end - start) / 1000.0, (end - start) / 1000000.0);
     }
 
-    public void forward(FullHttpRequest request, ServiceProviderInstance instance, ChannelHandlerContext ctx,String requestId) {
+    public void forward(FullHttpRequest request, ServiceProviderInstance instance, ChannelHandlerContext ctx, String requestId) {
         log.debug("===Call forward===");
         if (instance == null) {
             sendErrorResponse(ctx, "No available service instance");
@@ -78,7 +86,7 @@ public class Forwarder implements GatewayPlugin {
 
         requestResponseMapper.registerRequest(requestId, ctx);
         log.info("forward: requestId={}, frontendCtxHash={}, instance={}", requestId, ctx.hashCode(), instance);
-        log.debug(requestId+" 用于处理 request name: "+request.headers().get("REQUEST-NAME"));
+        log.debug(requestId + " 用于处理 request name: " + request.headers().get("REQUEST-NAME"));
 
         try {
             ChannelFuture future = SHARED_BOOTSTRAP.connect(instance.getHost(), instance.getPort());
@@ -100,7 +108,7 @@ public class Forwarder implements GatewayPlugin {
                 }
             });
         } catch (Exception e) {
-            log.error(requestId+" Failed to connect to backend: " + e.getMessage());
+            log.error(requestId + " Failed to connect to backend: " + e.getMessage());
             sendErrorResponse(ctx, "Service unavailable");
         }
     }
@@ -139,39 +147,5 @@ public class Forwarder implements GatewayPlugin {
         response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/plain;charset=UTF-8");
         response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
         ctx.writeAndFlush(response).addListener(ChannelFutureListener.CLOSE);
-    }
-
-    /**
-     * 处理从目标服务返回的响应
-     */
-    private class ForwardResponseHandler extends SimpleChannelInboundHandler<FullHttpResponse> {
-        private final ChannelHandlerContext originalCtx;
-
-        public ForwardResponseHandler(ChannelHandlerContext originalCtx) {
-            this.originalCtx = originalCtx;
-        }
-
-        @Override
-        protected void channelRead0(ChannelHandlerContext ctx, FullHttpResponse response) {
-            // Length of response
-            metricsServer.getResponseSize().update(response.content().readableBytes());
-            // 将响应写回原始客户端
-            log.debug("response:" + response);
-            originalCtx.writeAndFlush(response.retain()).addListener(ChannelFutureListener.CLOSE);
-            // Number of success jobs.
-            metricsServer.getSuccessJobs().inc();
-            // 在请求响应后给选中的服务实例减少连接数
-            LeastConnection.releaseConnection(serviceIdContext.get(), instanceContext.get().getPort());
-            ctx.close();
-        }
-
-        @Override
-        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-            log.info("Error in forward response handler: " + cause.getMessage());
-            new Forwarder().sendErrorResponse(originalCtx, "Internal server error");
-            // 在请求响应后给选中的服务实例减少连接数
-            LeastConnection.releaseConnection(serviceIdContext.get(), instanceContext.get().getPort());
-            ctx.close();
-        }
     }
 }
