@@ -32,3 +32,11 @@ mybatis-plus:
 logging:
   config: classpath:logback-spring.xml
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  metrics:
+    tags:
+      application: ${spring.application.name}

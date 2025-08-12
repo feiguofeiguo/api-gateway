@@ -4,6 +4,7 @@ import com.bank.gateway.plugin.GatewayPlugin;
 import com.bank.gateway.plugin.PluginChain;
 import com.bank.gateway.plugin.PluginContext;
 import com.bank.gateway.router.entity.ServiceProviderInstance;
+import com.bank.gateway.monitor.server.MetricsServer;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -43,6 +44,9 @@ public class Forwarder implements GatewayPlugin {
                     }
                 });
     }
+
+    @Autowired
+    private MetricsServer metricsServer;
 
     @Override
     public String name() { return "ForwarderPlugin"; }
@@ -135,5 +139,39 @@ public class Forwarder implements GatewayPlugin {
         response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/plain;charset=UTF-8");
         response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
         ctx.writeAndFlush(response).addListener(ChannelFutureListener.CLOSE);
+    }
+
+    /**
+     * 处理从目标服务返回的响应
+     */
+    private class ForwardResponseHandler extends SimpleChannelInboundHandler<FullHttpResponse> {
+        private final ChannelHandlerContext originalCtx;
+
+        public ForwardResponseHandler(ChannelHandlerContext originalCtx) {
+            this.originalCtx = originalCtx;
+        }
+
+        @Override
+        protected void channelRead0(ChannelHandlerContext ctx, FullHttpResponse response) {
+            // Length of response
+            metricsServer.getResponseSize().update(response.content().readableBytes());
+            // 将响应写回原始客户端
+            log.debug("response:" + response);
+            originalCtx.writeAndFlush(response.retain()).addListener(ChannelFutureListener.CLOSE);
+            // Number of success jobs.
+            metricsServer.getSuccessJobs().inc();
+            // 在请求响应后给选中的服务实例减少连接数
+            LeastConnection.releaseConnection(serviceIdContext.get(), instanceContext.get().getPort());
+            ctx.close();
+        }
+
+        @Override
+        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+            log.info("Error in forward response handler: " + cause.getMessage());
+            new Forwarder().sendErrorResponse(originalCtx, "Internal server error");
+            // 在请求响应后给选中的服务实例减少连接数
+            LeastConnection.releaseConnection(serviceIdContext.get(), instanceContext.get().getPort());
+            ctx.close();
+        }
     }
 }

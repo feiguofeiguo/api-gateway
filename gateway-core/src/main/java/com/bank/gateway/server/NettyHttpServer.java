@@ -1,5 +1,6 @@
 package com.bank.gateway.server;
 
+import com.bank.gateway.monitor.server.MetricsServer;
 import com.bank.gateway.plugin.PluginDispatcherHandler;
 import com.bank.gateway.router.RouterService;
 import io.netty.bootstrap.ServerBootstrap;
@@ -22,6 +23,8 @@ public class NettyHttpServer implements CommandLineRunner {
     private RouterService routerService;
     @Autowired
     private  PluginManager pluginManager;
+    @Autowired
+    private MetricsServer metricsServer;
 
     private void startServer() throws InterruptedException {
         EventLoopGroup bossGroup = new NioEventLoopGroup(1);
@@ -36,7 +39,7 @@ public class NettyHttpServer implements CommandLineRunner {
                             ChannelPipeline pipeline = ch.pipeline();
                             pipeline.addLast(new HttpServerCodec());
                             pipeline.addLast(new HttpObjectAggregator(65536));
-                            pipeline.addLast(new PluginDispatcherHandler(pluginManager));
+                            pipeline.addLast(new PluginDispatcherHandler(pluginManager, metricsServer));
                         }
                     });
 
