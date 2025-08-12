@@ -4,6 +4,7 @@ import com.bank.gateway.plugin.GatewayPlugin;
 import com.bank.gateway.plugin.PluginChain;
 import com.bank.gateway.plugin.PluginContext;
 import com.bank.gateway.router.entity.ServiceProviderInstance;
+import com.bank.gateway.monitor.server.MetricsServer;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -43,6 +44,9 @@ public class Forwarder implements GatewayPlugin {
                     }
                 });
     }
+
+    @Autowired
+    private MetricsServer metricsServer;
 
     @Override
     public String name() { return "ForwarderPlugin"; }
