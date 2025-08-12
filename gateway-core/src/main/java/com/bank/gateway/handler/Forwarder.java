@@ -12,6 +12,7 @@ import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.*;
 import io.netty.util.AttributeKey;
 import io.netty.util.CharsetUtil;
+import io.netty.util.ReferenceCountUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -78,15 +79,20 @@ public class Forwarder implements GatewayPlugin {
         try {
             ChannelFuture future = SHARED_BOOTSTRAP.connect(instance.getHost(), instance.getPort());
             future.addListener((ChannelFutureListener) connectFuture -> {
-                if (connectFuture.isSuccess()) {
-                    Channel backendChannel = connectFuture.channel();
-                    log.info("forward: requestId={}, backendChannelHash={}, frontendCtxHash={}", requestId, backendChannel.hashCode(), ctx.hashCode());
-                    backendChannel.attr(AttributeKey.valueOf("requestId")).set(requestId);
-                    backendChannel.attr(AttributeKey.valueOf("frontendCtx")).set(ctx);
-                    FullHttpRequest forwardRequest = createForwardRequest(request, instance, requestId);
-                    backendChannel.writeAndFlush(forwardRequest);
-                } else {
-                    sendErrorResponse(ctx, "后端服务连接失败");  //here 此处报错过，高并发下
+                try {
+                    if (connectFuture.isSuccess()) {
+                        Channel backendChannel = connectFuture.channel();
+                        log.info("forward: requestId={}, backendChannelHash={}, frontendCtxHash={}", requestId, backendChannel.hashCode(), ctx.hashCode());
+                        backendChannel.attr(AttributeKey.valueOf("requestId")).set(requestId);
+                        backendChannel.attr(AttributeKey.valueOf("frontendCtx")).set(ctx);
+                        FullHttpRequest forwardRequest = createForwardRequest(request, instance, requestId);
+                        backendChannel.writeAndFlush(forwardRequest);
+                    } else {
+                        sendErrorResponse(ctx, "后端服务连接失败");  //here 此处报错过，高并发下
+                    }
+                } finally {
+                    // 释放原始请求
+                    ReferenceCountUtil.release(request);
                 }
             });
         } catch (Exception e) {

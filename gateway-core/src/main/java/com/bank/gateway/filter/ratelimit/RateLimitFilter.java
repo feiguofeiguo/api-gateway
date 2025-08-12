@@ -83,7 +83,7 @@ public class RateLimitFilter implements GatewayPlugin {
                      rateLimitEnd - rateLimitStart, (rateLimitEnd - rateLimitStart) / 1000.0);
             
             if (!allowed) {
-                sendError(ctx, "Too Many Requests", HttpResponseStatus.TOO_MANY_REQUESTS);
+                sendError(ctx, "Too Many Requests", HttpResponseStatus.OK);  //TOO_MANY_REQUESTS
                 return;
             }
             log.debug("插件版-流量控制，通过！");
