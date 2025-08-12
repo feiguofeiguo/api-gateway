@@ -62,6 +62,8 @@ public class AuthFilter implements GatewayPlugin {
             log.debug("nowSignatureValidator validate request time: {}", nowSignatureValidator-nowApiKey);
             // 3. 校验 IP 白名单
             String clientIp = ((InetSocketAddress) ctx.channel().remoteAddress()).getAddress().getHostAddress();
+            String clientPort = ((InetSocketAddress) ctx.channel().remoteAddress()).getPort() + "";
+            log.debug("clientIp: {}, clientPort: {}", clientIp, clientPort);   //临时error
             ipWhitelistValidator.validate(clientIp);
             long nowClientIp = System.nanoTime();
             log.debug("nowClientIp validate request time: {}", nowClientIp-nowSignatureValidator);
@@ -112,7 +114,7 @@ public class AuthFilter implements GatewayPlugin {
         ctx.writeAndFlush(response).addListener(io.netty.channel.ChannelFutureListener.CLOSE);
         
         // 释放原始请求
-        ReferenceCountUtil.release(request);
+        //ReferenceCountUtil.release(request);
     }
 
     /**
@@ -133,7 +135,7 @@ public class AuthFilter implements GatewayPlugin {
         ctx.writeAndFlush(response).addListener(io.netty.channel.ChannelFutureListener.CLOSE);
         
         // 释放原始请求
-        ReferenceCountUtil.release(request);
+        //ReferenceCountUtil.release(request);
     }
 
     /**

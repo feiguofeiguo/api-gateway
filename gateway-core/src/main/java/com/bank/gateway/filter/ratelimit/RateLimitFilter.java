@@ -125,6 +125,7 @@ public class RateLimitFilter implements GatewayPlugin {
      */
     private boolean shouldPerformGlobalCheck(String serviceId, RateLimitConfigService.LimitConfig config) {
         // 默认情况下，我们信任本地限流器
+        return false;
         // 只有在特殊情况下才需要进行全局精确检查
         // 例如：
         // 1. 对于某些关键服务，可能需要更精确的控制
@@ -132,23 +133,23 @@ public class RateLimitFilter implements GatewayPlugin {
         // 3. 当配置明确要求进行全局检查时
         
         // 示例：对于关键服务总是进行全局检查
-        if ("critical-service".equals(serviceId)) {
-            return true;
-        }
-        
-        // 示例：当限流阈值很小时，进行全局检查以确保精确性
-        if (config.getType() == RateLimitEnum.TOKEN_BUCKET && config.getTkbRate() < 5) {
-            return true;
-        }
-        
-        if ((config.getType() == RateLimitEnum.SLIDING_WINDOW || 
-             config.getType() == RateLimitEnum.FIXED_WINDOW) && 
-            config.getSlwThreshold() < 10) {
-            return true;
-        }
-        
-        // 默认情况下不进行全局检查，信任本地限流器
-        return false;
+//        if ("critical-service".equals(serviceId)) {
+//            return true;
+//        }
+//
+//        // 示例：当限流阈值很小时，进行全局检查以确保精确性
+//        if (config.getType() == RateLimitEnum.TOKEN_BUCKET && config.getTkbRate() < 5) {
+//            return true;
+//        }
+//
+//        if ((config.getType() == RateLimitEnum.SLIDING_WINDOW ||
+//             config.getType() == RateLimitEnum.FIXED_WINDOW) &&
+//            config.getSlwThreshold() < 10) {
+//            return true;
+//        }
+//
+//        // 默认情况下不进行全局检查，信任本地限流器
+//        return false;
     }
 
     private void sendError(ChannelHandlerContext ctx, FullHttpRequest request, String message, HttpResponseStatus status) {
@@ -162,6 +163,6 @@ public class RateLimitFilter implements GatewayPlugin {
         ctx.writeAndFlush(response).addListener(ChannelFutureListener.CLOSE);
         
         // 释放原始请求
-        ReferenceCountUtil.release(request);
+        //ReferenceCountUtil.release(request);
     }
 }

@@ -67,7 +67,8 @@ public class Forwarder implements GatewayPlugin {
     public void forward(FullHttpRequest request, ServiceProviderInstance instance, ChannelHandlerContext ctx,String requestId) {
         log.debug("===Call forward===");
         if (instance == null) {
-            sendErrorResponse(ctx, request, "No available service instance");
+            sendErrorResponse(ctx, "No available service instance");
+            //是否需要回收request
             return;
         }
         log.debug("instance:" + instance);
@@ -79,20 +80,24 @@ public class Forwarder implements GatewayPlugin {
         try {
             ChannelFuture future = SHARED_BOOTSTRAP.connect(instance.getHost(), instance.getPort());
             future.addListener((ChannelFutureListener) connectFuture -> {
-                if (connectFuture.isSuccess()) {
-                    Channel backendChannel = connectFuture.channel();
-                    log.info("forward: requestId={}, backendChannelHash={}, frontendCtxHash={}", requestId, backendChannel.hashCode(), ctx.hashCode());
-                    backendChannel.attr(AttributeKey.valueOf("requestId")).set(requestId);
-                    backendChannel.attr(AttributeKey.valueOf("frontendCtx")).set(ctx);
-                    FullHttpRequest forwardRequest = createForwardRequest(request, instance, requestId);
-                    backendChannel.writeAndFlush(forwardRequest);
-                } else {
-                    sendErrorResponse(ctx, request, "后端服务连接失败");  //here 此处报错过，高并发下
+                try {
+                    if (connectFuture.isSuccess()) {
+                        Channel backendChannel = connectFuture.channel();
+                        backendChannel.attr(AttributeKey.valueOf("requestId")).set(requestId);
+                        backendChannel.attr(AttributeKey.valueOf("frontendCtx")).set(ctx);
+                        FullHttpRequest forwardRequest = createForwardRequest(request, instance, requestId);
+                        backendChannel.writeAndFlush(forwardRequest);
+                    } else {
+                        sendErrorResponse(ctx, "后端服务连接失败");
+                    }
+                } finally {
+                    ReferenceCountUtil.release(request); // 放在这里
                 }
             });
         } catch (Exception e) {
             log.error(requestId+" Failed to connect to backend: " + e.getMessage());
-            sendErrorResponse(ctx, request, "Service unavailable");
+            sendErrorResponse(ctx, "Service unavailable");
+            ReferenceCountUtil.release(request);
         }
     }
 
@@ -121,7 +126,7 @@ public class Forwarder implements GatewayPlugin {
         return forwardRequest;
     }
 
-    private void sendErrorResponse(ChannelHandlerContext ctx, FullHttpRequest request, String errorMessage) {
+    private void sendErrorResponse(ChannelHandlerContext ctx, String errorMessage) {
         FullHttpResponse response = new DefaultFullHttpResponse(
                 HttpVersion.HTTP_1_1,
                 HttpResponseStatus.SERVICE_UNAVAILABLE,
@@ -130,8 +135,5 @@ public class Forwarder implements GatewayPlugin {
         response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/plain;charset=UTF-8");
         response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
         ctx.writeAndFlush(response).addListener(ChannelFutureListener.CLOSE);
-        
-        // 释放原始请求
-        ReferenceCountUtil.release(request);
     }
 }

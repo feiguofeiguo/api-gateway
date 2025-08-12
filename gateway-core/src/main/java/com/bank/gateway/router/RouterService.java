@@ -58,7 +58,7 @@ public class RouterService implements GatewayPlugin {
             ctx.writeAndFlush(response).addListener(ChannelFutureListener.CLOSE);
             
             // 释放原始请求
-            ReferenceCountUtil.release(request);
+            ////ReferenceCountUtil.release(request);
             return;
         }
         log.debug("插件版-路由-获取微服务名，成功！");

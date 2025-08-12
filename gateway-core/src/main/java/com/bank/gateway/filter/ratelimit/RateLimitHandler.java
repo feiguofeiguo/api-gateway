@@ -42,6 +42,8 @@ public class RateLimitHandler extends ChannelInboundHandlerAdapter {
             }
         }
 
+
+
         // 允许请求继续处理
         super.channelRead(ctx, msg);
     }
@@ -83,7 +85,7 @@ public class RateLimitHandler extends ChannelInboundHandlerAdapter {
     private void sendRateLimitResponse(ChannelHandlerContext ctx) {
         FullHttpResponse response = new DefaultFullHttpResponse(
                 HttpVersion.HTTP_1_1,
-                HttpResponseStatus.TOO_MANY_REQUESTS,
+                HttpResponseStatus.OK,  //TOO_MANY_REQUESTS
                 ctx.alloc().buffer().writeBytes("Too Many Requests".getBytes(CharsetUtil.UTF_8))
         );
         response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/plain;charset=UTF-8");

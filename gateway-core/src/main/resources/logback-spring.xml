@@ -35,7 +35,7 @@
         <!--此日志appender是为开发使用，只配置最底级别，控制台输出的日志级别是大于或等于此级别的日志信息-->
         <!-- 定义日志输出级别的过滤器，class="ch.qos.logback.classic.filter.ThresholdFilter"表示使用Logback框架提供的ThresholdFilter类来过滤日志输出，<level>debug</level>表示只输出debug级别及以上的日志 -->
         <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
-            <level>debug</level>
+            <level>error</level>
         </filter>
         <encoder>
             <!-- ${CONSOLE_LOG_PATTERN}表示控制台日志输出格式，UTF-8表示编码格式 -->

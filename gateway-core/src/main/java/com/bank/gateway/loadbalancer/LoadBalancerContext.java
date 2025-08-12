@@ -59,7 +59,7 @@ public class LoadBalancerContext implements GatewayPlugin {
             ctx.writeAndFlush(response).addListener(io.netty.channel.ChannelFutureListener.CLOSE);
             
             // 释放原始请求
-            ReferenceCountUtil.release(request);
+            //ReferenceCountUtil.release(request);
             return;
         }
         context.setInstance(instance);
